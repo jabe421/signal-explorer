@@ -1,0 +1,9 @@
+pyside6>=6.7
+python-can>=4.4
+pyserial>=3.5
+
+[dev]
+pytest>=8.0
+
+[intrepid]
+python-ics

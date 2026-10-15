@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "signal-explorer"
+version = "0.1.0"
+description = "Open-source multi-adapter bus explorer. CAN first; Ethernet, LIN, and SENT later."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Signal Explorer contributors" }]
+dependencies = [
+    "PySide6-Essentials>=6.7",
+    "python-can>=4.4",
+    "pyserial>=3.5",
+]
+
+[project.optional-dependencies]
+intrepid = ["python-ics"]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+signal-explorer = "signal_explorer.app:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
