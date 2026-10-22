@@ -14,10 +14,12 @@ dependencies = [
     "PySide6-Essentials>=6.7",
     "python-can>=4.4",
     "pyserial>=3.5",
+    "cantools>=39",
+    "uptime>=3.0.1",
 ]
 
 [project.optional-dependencies]
-intrepid = ["python-ics"]
+intrepid = ["python-ics", "filelock"]
 dev = ["pytest>=8.0"]
 
 [project.scripts]

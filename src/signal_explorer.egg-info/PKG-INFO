@@ -6,9 +6,10 @@ Author: Signal Explorer contributors
 License: MIT
 Requires-Python: >=3.11
 Description-Content-Type: text/markdown
-Requires-Dist: pyside6>=6.7
+Requires-Dist: PySide6-Essentials>=6.7
 Requires-Dist: python-can>=4.4
 Requires-Dist: pyserial>=3.5
+Requires-Dist: cantools>=39
 Provides-Extra: intrepid
 Requires-Dist: python-ics; extra == "intrepid"
 Provides-Extra: dev
