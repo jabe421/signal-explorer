@@ -50,7 +50,7 @@ def discover_channels(interface):
                 configs = canlib.KvaserBus._detect_available_configs()
                 options = [ChannelOption(
                     f"{cfg.get('device_name', 'Kvaser')} | serial {cfg.get('serial', '?')} | channel {cfg['channel']}",
-                    {"channel": cfg["channel"]}) for cfg in configs]
+                    {"channel": cfg["channel"], **({"supports_fd": cfg["supports_fd"]} if "supports_fd" in cfg else {})}) for cfg in configs]
                 vendor = "Kvaser"
             else:
                 from can.interfaces.pcan import PcanBus
@@ -59,7 +59,7 @@ def discover_channels(interface):
                 configs = PcanBus._detect_available_configs()
                 options = [ChannelOption(
                     f"{cfg.get('device_name', 'PCAN')} | {cfg['channel']} | controller {cfg.get('controller_number', '?')}",
-                    {"channel": cfg["channel"]}) for cfg in configs]
+                    {"channel": cfg["channel"], **({"supports_fd": cfg["supports_fd"]} if "supports_fd" in cfg else {})}) for cfg in configs]
                 vendor = "PEAK PCAN"
             return options, (f"{len(options)} {vendor} CAN channels detected." if options else
                              f"{vendor} API loaded; no channels detected. Connect an adapter and Refresh devices.")
@@ -75,7 +75,8 @@ def discover_channels(interface):
                 options.append(ChannelOption(
                     f"{name} | serial {cfg['serial']} | CAN {cfg['channel'] + 1}",
                     {"channel": cfg["channel"], "serial": cfg["serial"],
-                     "channel_index": cfg["channel_index"], "app_name": None}))
+                     "channel_index": cfg["channel_index"], "app_name": None,
+                     **({"supports_fd": cfg["supports_fd"]} if "supports_fd" in cfg else {})}))
             return options, f"{len(options)} Vector CAN channels detected." if options else "No Vector CAN channels detected. Check USB and Vector drivers."
         if interface == "neovi":
             import ics
@@ -93,7 +94,7 @@ def discover_channels(interface):
                         networks += ["HSCAN3", "HSCAN4"]
                 for network in networks:
                     options.append(ChannelOption(f"{name} | {serial} | {network}",
-                                                 {"channel": network, "serial": serial}))
+                                                 {"channel": network, "serial": serial, **({"supports_fd": False} if "ValueCAN3" in name else {})}))
             return options, f"{len(options)} Intrepid CAN channels detected." if options else "No Intrepid devices detected. Check USB and Intrepid drivers."
     except ImportError as exc:
         hint = "Install the intrepid optional dependency." if interface == "neovi" else "Install the vendor's matching API and drivers."

@@ -26,6 +26,7 @@ from signal_explorer.bus.backends import (
     preferred_slcan_port,
 )
 from signal_explorer.bus.service import BusService
+from signal_explorer.bus.canfd import FD_INTERFACES, DATA_BITRATES, validate_frame
 from signal_explorer.ui.trace_model import TraceModel, IdFilter
 import can
 import cantools
@@ -67,9 +68,16 @@ class MainWindow(QMainWindow):
             self._bitrate.addItem(f"{rate // 1000} kbit/s", rate)
         self._bitrate.setCurrentIndex(2)  # 500 k
 
+        self._fd = QCheckBox("CAN FD")
+        self._data_bitrate = QComboBox()
+        for rate in DATA_BITRATES:
+            self._data_bitrate.addItem(f"{rate / 1000000:g} Mbit/s", rate)
+        self._data_bitrate.setCurrentIndex(2)
+        self._fd.toggled.connect(self._sync_fd_controls)
+
         self._demo = QCheckBox("Inject demo traffic")
         self._demo.setChecked(True)
-        self._demo.setToolTip("Sends a 100 ms frame on the virtual bus so you can test without hardware.")
+        self._demo.setToolTip("Simulates engine and oxygen sensor traffic every 100 ms. CAN FD adds a 32-byte frame.")
 
         self._connect = QPushButton("Connect")
         self._connect.clicked.connect(self._toggle_connection)
@@ -117,6 +125,13 @@ class MainWindow(QMainWindow):
 
         root = QVBoxLayout()
         root.addLayout(bar)
+        fd_bar = QHBoxLayout()
+        fd_bar.addWidget(self._fd)
+        fd_bar.addWidget(QLabel("Data bitrate (FD)"))
+        fd_bar.addWidget(self._data_bitrate)
+        fd_bar.addWidget(QLabel("Bitrate above is the arbitration rate. Virtual mode simulates frames, not physical bus timing."))
+        fd_bar.addStretch()
+        root.addLayout(fd_bar)
         root.addWidget(self._notes)
         filters = QHBoxLayout()
         self._filter = QLineEdit()
@@ -147,6 +162,9 @@ class MainWindow(QMainWindow):
         self._tx_extended = QCheckBox("Extended ID")
         self._tx_data = QLineEdit("01 02 03 04 05 06 07 08")
         self._tx_data.setPlaceholderText("0-8 hexadecimal bytes, e.g. DE AD BE EF")
+        self._tx_fd = QCheckBox("FD frame")
+        self._tx_brs = QCheckBox("BRS")
+        self._tx_fd.toggled.connect(self._sync_fd_controls)
         self._tx_interval = QLineEdit()
         self._tx_interval.setMaximumWidth(130)
         self._tx_interval.setPlaceholderText("Blank = once")
@@ -154,7 +172,7 @@ class MainWindow(QMainWindow):
         self._send = QPushButton("Send")
         self._send.setEnabled(False)
         self._send.clicked.connect(self._send_message)
-        for widget in (QLabel("Send ID (hex)"), self._tx_id, self._tx_extended,
+        for widget in (QLabel("Send ID (hex)"), self._tx_id, self._tx_extended, self._tx_fd, self._tx_brs,
                        QLabel("Data (hex)"), self._tx_data,
                        QLabel("Interval (ms)"), self._tx_interval, self._send):
             send_bar.addWidget(widget)
@@ -232,6 +250,9 @@ class MainWindow(QMainWindow):
         virtual = spec.interface == "virtual"
         self._demo.setEnabled(virtual)
         self._bitrate.setEnabled(not virtual)
+        if spec.interface not in FD_INTERFACES:
+            self._fd.setChecked(False)
+        self._sync_fd_controls()
 
     def _toggle_connection(self) -> None:
         if self._service.is_connected:
@@ -246,7 +267,8 @@ class MainWindow(QMainWindow):
         inject = self._demo.isChecked() and spec.interface == "virtual"
         selected = self._channel.currentData()
         config = selected if isinstance(selected, dict) and self._channel.currentText() == self._channel.itemText(self._channel.currentIndex()) else None
-        self._service.connect_bus(spec, channel, bitrate, inject, device_config=config)
+        self._service.connect_bus(spec, channel, bitrate, inject, device_config=config,
+                                  fd=self._fd.isChecked(), data_bitrate=int(self._data_bitrate.currentData()))
 
     def _on_connected(self, label: str) -> None:
         self._explore.setEnabled(True)
@@ -259,6 +281,7 @@ class MainWindow(QMainWindow):
         self._channel.setEnabled(False)
         self._bitrate.setEnabled(False)
         self._demo.setEnabled(False)
+        self._sync_fd_controls()
         self._status.setText(f"Connected · {label}")
 
     def _on_disconnected(self) -> None:
@@ -366,10 +389,10 @@ class MainWindow(QMainWindow):
                     raise ValueError("Interval must be between 1 and 2147483647 milliseconds.")
             identifier = int(self._tx_id.text().strip(), 16)
             data = bytes.fromhex(self._tx_data.text())
-            if len(data) > 8:
-                raise ValueError("Classic CAN supports up to 8 data bytes.")
             msg = can.Message(arbitration_id=identifier, is_extended_id=self._tx_extended.isChecked(),
-                              data=data, check=True)
+                              data=data, is_fd=self._tx_fd.isChecked(),
+                              bitrate_switch=self._tx_brs.isChecked(), check=True)
+            validate_frame(msg, self._service.fd_enabled)
         except ValueError as exc:
             QMessageBox.warning(self, "Invalid CAN message", str(exc))
             return
@@ -380,9 +403,26 @@ class MainWindow(QMainWindow):
             self._tx_timer.start(interval)
             self._set_repeat_controls(True)
 
+    def _sync_fd_controls(self, *_):
+        connected = self._service.is_connected
+        running = self._tx_timer.isActive()
+        supported = self._current_backend().interface in FD_INTERFACES
+        self._fd.setEnabled(not connected and supported)
+        self._data_bitrate.setEnabled(not connected and supported and self._fd.isChecked())
+        enabled = connected and self._service.fd_enabled
+        if not enabled:
+            self._tx_fd.setChecked(False)
+        self._tx_fd.setEnabled(enabled and not running)
+        if not self._tx_fd.isChecked():
+            self._tx_brs.setChecked(False)
+        self._tx_brs.setEnabled(enabled and self._tx_fd.isChecked() and not running)
+        self._tx_data.setPlaceholderText("0-64 bytes; FD lengths: 0-8,12,16,20,24,32,48,64" if self._tx_fd.isChecked()
+                                         else "0-8 hexadecimal bytes, e.g. DE AD BE EF")
+
     def _set_repeat_controls(self, running):
         for widget in (self._tx_id, self._tx_extended, self._tx_data, self._tx_interval):
             widget.setEnabled(not running)
+        self._sync_fd_controls()
         self._send.setText("Stop" if running else "Send")
         self._send.setEnabled(running or self._service.is_connected)
 

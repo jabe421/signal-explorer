@@ -18,7 +18,7 @@ class Exploring(unittest.TestCase):
         model = TraceModel(history_mode=False)
         headers = [model.headerData(c, Qt.Orientation.Horizontal) for c in range(model.columnCount())]
         self.assertEqual(headers, ['Timestamp', 'Counts', 'Bus Number', 'Message ID (hex)',
-                                  'Ext', 'Direction', 'DLC', 'Data', 'DBC Message', 'Signals'])
+                                  'Ext', 'Direction', 'DLC', 'Data', 'DBC Message', 'Signals', 'FD', 'BRS', 'ESI'])
         for channel in ('COM3', 'PCAN_USBBUS1'):
             model.append_message(can.Message(timestamp=123.5, arbitration_id=256,
                                              is_extended_id=False, channel=channel, data=[170]))

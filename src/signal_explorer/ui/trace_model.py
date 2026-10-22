@@ -3,7 +3,7 @@ from copy import deepcopy
 from collections import deque
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt, QSortFilterProxyModel
 
-_COLUMNS = ("Timestamp", "Counts", "Bus Number", "Message ID (hex)", "Ext", "Direction", "DLC", "Data", "DBC Message", "Signals")
+_COLUMNS = ("Timestamp", "Counts", "Bus Number", "Message ID (hex)", "Ext", "Direction", "DLC", "Data", "DBC Message", "Signals", "FD", "BRS", "ESI")
 
 class TraceModel(QAbstractTableModel):
     def __init__(self, history_mode=True, max_history=10_000):
@@ -40,7 +40,8 @@ class TraceModel(QAbstractTableModel):
         return (f"{msg.timestamp:.6f}", str(count), str(msg.channel) if msg.channel is not None else "",
                 f"{msg.arbitration_id:03X}", "Y" if msg.is_extended_id else "",
                 "RX" if msg.is_rx else "TX", str(msg.dlc),
-                msg.data.hex(" ").upper(), name, signals)[index.column()]
+                msg.data.hex(" ").upper(), name, signals, "Y" if msg.is_fd else "",
+                "Y" if msg.bitrate_switch else "", "Y" if msg.error_state_indicator else "")[index.column()]
 
     def _decode(self, msg):
         if self.database is None or msg.is_error_frame or msg.is_remote_frame:

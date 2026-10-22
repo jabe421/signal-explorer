@@ -9,6 +9,8 @@ from PySide6.QtCore import QObject, QThread, QTimer, Signal
 
 from signal_explorer.bus.backends import BackendSpec
 from signal_explorer.bus.discovery import prepare_vector_library
+from signal_explorer.bus.canfd import fd_configuration, validate_frame
+from signal_explorer.bus.demo import demo_frames
 
 
 class _Reader(QThread):
@@ -42,6 +44,7 @@ class BusService(QObject):
         super().__init__(parent)
         self._bus: can.BusABC | None = None
         self._channel = None
+        self.fd_enabled = False
         self._demo_bus: can.BusABC | None = None
         self._reader: _Reader | None = None
         self._demo_timer = QTimer(self)
@@ -60,6 +63,8 @@ class BusService(QObject):
         bitrate: int,
         inject_demo: bool,
         device_config: dict | None = None,
+        fd: bool = False,
+        data_bitrate: int = 2000000,
     ) -> None:
         if self._bus is not None:
             self.disconnect_bus()
@@ -85,12 +90,17 @@ class BusService(QObject):
             kwargs.setdefault("tty_baudrate", 115200)
 
         try:
+            if fd:
+                if device_config and device_config.get("supports_fd") is False:
+                    raise ValueError("The selected channel does not support CAN FD.")
+                kwargs.update(fd_configuration(backend.interface, bitrate, data_bitrate))
             self._bus = can.Bus(**kwargs)
         except Exception as exc:  # noqa: BLE001 — surface any vendor/driver failure in the UI
             self._bus = None
             self.error.emit(f"Connect failed ({backend.label}): {exc}")
             return
 
+        self.fd_enabled = fd
         self._channel = kwargs["channel"]
         self._reader = _Reader(self._bus)
         self._reader.message.connect(self._on_received_message)
@@ -102,6 +112,8 @@ class BusService(QObject):
                 self._demo_bus = can.Bus(
                     interface="virtual",
                     channel=kwargs["channel"],
+                    protocol=self._bus.protocol,
+                    ignore_config=True,
                 )
                 self._demo_counter = 0
                 self._demo_timer.start()
@@ -121,6 +133,7 @@ class BusService(QObject):
             self.error.emit("Connect before sending a message.")
             return False
         try:
+            validate_frame(msg, self.fd_enabled)
             self._bus.send(msg, timeout=0.2)
         except Exception as exc:
             self.error.emit(f"Send failed: {exc}")
@@ -133,6 +146,7 @@ class BusService(QObject):
         return True
 
     def disconnect_bus(self) -> None:
+        self.fd_enabled = False
         self._demo_timer.stop()
         if self._demo_bus is not None:
             try:
@@ -162,14 +176,10 @@ class BusService(QObject):
     def _send_demo_frame(self) -> None:
         if self._demo_bus is None:
             return
-        self._demo_counter = (self._demo_counter + 1) & 0xFF
-        msg = can.Message(
-            arbitration_id=0x100,
-            data=[self._demo_counter, 0x01, 0x02, 0x03, 0xDE, 0xAD, 0xBE, 0xEF],
-            is_extended_id=False,
-        )
+        self._demo_counter += 1
         try:
-            self._demo_bus.send(msg)
+            for msg in demo_frames(self._demo_counter, self.fd_enabled):
+                self._demo_bus.send(msg)
         except can.CanError as exc:
             self.error.emit(f"Demo send failed: {exc}")
             self._demo_timer.stop()

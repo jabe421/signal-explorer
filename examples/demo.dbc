@@ -5,3 +5,22 @@ BU_: Demo
 BO_ 256 DemoStatus: 8 Demo
  SG_ Counter : 0|8@1+ (1,0) [0|255] "" Demo
  SG_ Temperature : 8|8@1+ (1,-40) [-40|215] "degC" Demo
+
+BO_ 512 EngineData: 8 Demo
+ SG_ EngineRPM : 0|16@1+ (0.25,0) [0|16000] "rpm" Demo
+ SG_ MAF : 16|16@1+ (0.01,0) [0|655.35] "g/s" Demo
+ SG_ O2B1S1Voltage : 32|16@1+ (0.001,0) [0|1] "V" Demo
+ SG_ O2Lambda : 48|16@1+ (0.001,0) [0|2] "" Demo
+
+BO_ 768 EngineFD: 32 Demo
+ SG_ EngineRPM : 0|16@1+ (0.25,0) [0|16000] "rpm" Demo
+ SG_ MAF : 16|16@1+ (0.01,0) [0|655.35] "g/s" Demo
+ SG_ O2B1S1Voltage : 32|16@1+ (0.001,0) [0|1] "V" Demo
+ SG_ O2Lambda : 48|16@1+ (0.001,0) [0|2] "" Demo
+ SG_ SampleCounter : 64|16@1+ (1,0) [0|65535] "" Demo
+ SG_ O2B2S1Voltage : 80|16@1+ (0.001,0) [0|1] "V" Demo
+ SG_ O2B2Lambda : 96|16@1+ (0.001,0) [0|2] "" Demo
+
+BA_DEF_ BO_ "VFrameFormat" ENUM "StandardCAN","ExtendedCAN","reserved","J1939PG","reserved","reserved","reserved","reserved","reserved","reserved","reserved","reserved","reserved","reserved","StandardCAN_FD","ExtendedCAN_FD";
+BA_DEF_DEF_ "VFrameFormat" "StandardCAN";
+BA_ "VFrameFormat" BO_ 768 14;

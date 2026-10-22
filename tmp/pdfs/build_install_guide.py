@@ -83,7 +83,7 @@ p('If the tests folder was copied, run the following from the project root. The 
 code('.\\.venv\\Scripts\\python.exe -m unittest discover -s tests -v')
 p('Tests use simulated or virtual traffic and do not establish that a new physical adapter is wired and communicating correctly.','SmallSE')
 h('Current scope')
-p('The app currently configures <b>Classic CAN, one channel at a time</b>. CAN FD-capable hardware can be used in Classic CAN mode. CAN FD configuration, CAN XL protocol support, LIN, Ethernet, and SENT are not yet exposed. The Vector dropdown\'s CANXL label does not enable CAN XL frames.')
+p('The app supports <b>Classic CAN and CAN FD, one channel at a time</b>. Enable CAN FD and set arbitration/data bitrates before connecting. Virtual FD demo traffic includes Engine RPM, MAF and O2 signals; load examples/demo.dbc to decode them. Physical FD operation still needs hardware validation. CAN XL, LIN, Ethernet and SENT are not yet exposed. The Vector dropdown\'s CANXL label does not enable CAN XL frames.')
 p('DBC files are optional; copy the files you intend to use separately. No compiler is normally needed when compatible prebuilt Python wheels are available. Record working package versions for reproducible deployments; the current project uses minimum version constraints rather than a pinned dependency lock.','SmallSE')
 
 def decorate(canvas,doc):

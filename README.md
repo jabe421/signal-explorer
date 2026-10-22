@@ -49,7 +49,7 @@ switching back restores the most recent 10,000 frames. Older history is discarde
 to bound memory usage.
 Clear resets the display and frame count.
 
-- **Send:** connect first, enter a hexadecimal ID and 0-8 hexadecimal bytes.
+- **Send:** connect first, enter a hexadecimal ID and data bytes (0-8 for Classic CAN, up to 64 for CAN FD).
   Select Extended ID for 29-bit identifiers. Leave **Interval (ms)** blank to send once. Enter a positive whole number
   (for example `100`) and click **Send** to send immediately, then repeat every
   100 milliseconds. The **Send** button becomes **Stop** during repetition; click it again to stop. Fields are locked while sending;
@@ -117,15 +117,15 @@ such as `PCAN_USBBUS1` and `PCAN_USBBUS2`; use detected names when other PEAK
 adapters are also attached. Each PCAN-USB Pro FD CAN channel can be opened
 individually. Kvaser virtual driver channels are identified by name in the list.
 
-The current app opens these CAN FD-capable devices in **Classic CAN** mode.
-CAN FD configuration and PEAK LIN channels are not yet exposed in the GUI.
+Classic CAN is the default. Enable **CAN FD** and set arbitration/data bitrates
+for FD-capable devices. PEAK LIN channels are not exposed in the GUI.
 No vendor DLLs are bundled. On this PC both installed API libraries load;
 physical U100-C / PCAN-USB Pro FD traffic tests await the actual hardware.
 
 ## Exploring controls and trace columns
 
 Columns, from left to right: Timestamp, Counts, Bus Number, Message ID (hex),
-Ext, Direction, DLC, Data, DBC Message, Signals. Bus Number displays the native
+Ext, Direction, DLC, Data, DBC Message, Signals, FD, BRS, ESI. Bus Number displays the native
 adapter channel identifier (e.g. COM3, a zero-based Vector/Kvaser channel index,
 or a PCAN channel name). Fixed-row counts distinguish channel, ID and format.
 
@@ -135,3 +135,39 @@ trace and its counters while keeping the adapter connected. The button becomes
 and discarded from the trace, rather than buffered for replay. Message sending,
 including repeated sends, remains available while paused. Disconnecting stops
 monitoring; the explore button is disabled until the device is connected again.
+
+## CAN FD and engine demo
+
+Choose **Virtual**, check **CAN FD**, keep **Inject demo traffic** enabled, and
+Connect. Load `examples/demo.dbc` to decode these synthetic frames every 100 ms:
+
+- `100`: DemoStatus, counter and temperature (Classic CAN).
+- `200`: EngineData, EngineRPM (rpm), MAF (g/s), O2B1S1Voltage (V), O2Lambda (Classic CAN).
+- `300`: EngineFD, the engine signals plus SampleCounter, O2B2S1Voltage and O2B2Lambda
+  in a **32-byte FD frame with BRS**. Some signals are beyond the first eight bytes.
+
+These signals are simulated engineering examples, not real vehicle OBD-II requests
+or responses. Classic virtual mode still produces IDs 100 and 200.
+
+For sending FD frames, connect in FD mode, select **FD frame**, optionally select
+**BRS** (bit-rate switch), enter data, and Send. The interval field and Send/Stop
+behavior work for both formats. Classic frames can also be sent on an FD session.
+FD supports exact payload sizes **0-8, 12, 16, 20, 24, 32, 48, 64 bytes**. Other
+sizes are rejected with an explanation rather than silently padded. The trace DLC
+column shows byte count (python-can convention), not the encoded four-bit DLC.
+FD, BRS and ESI columns show received flags; ESI is not a user-send option.
+
+Hardware connection settings support Vector XL, Kvaser CANlib, Intrepid neoVI,
+and PEAK PCAN. Arbitration bitrate defaults to 500 kbit/s and data bitrate to
+2 Mbit/s. PEAK gets explicit calculated timing (80 MHz clock, 80% nominal and 75%
+data sample points). Other hardware backends use their driver timing defaults.
+Known unsupported channel capabilities are rejected; driver initialization may
+also reject unsupported settings. CANable SLCAN and gs_usb remain available in
+Classic CAN mode; CANable FD firmware-specific support is not enabled here.
+
+Validation uses virtual CAN for FD receive/transmit up to 64 bytes, repeated
+sends, BRS, length validation, ID filters, pause/resume and DBC decoding. Hardware
+FD connection arguments are tested with mocks. Physical CAN FD timing, wiring,
+and vendor behavior have not been validated by these tests. Virtual CAN delivers
+frames in memory and does not simulate arbitration, bitrate switching timing,
+acknowledgement or bus load.

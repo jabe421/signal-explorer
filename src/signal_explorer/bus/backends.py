@@ -55,7 +55,7 @@ BACKENDS: tuple[BackendSpec, ...] = (
         label="PEAK (PCAN-USB Pro FD / PCAN)",
         interface="pcan",
         default_channel="PCAN_USBBUS1",
-        notes="Requires PEAK drivers and PCAN-Basic API. Select a detected CAN channel or enter PCAN_USBBUS1 / PCAN_USBBUS2. Currently uses Classic CAN.",
+        notes="Requires PEAK drivers and PCAN-Basic API. Select a detected CAN channel or enter PCAN_USBBUS1 / PCAN_USBBUS2. Enable CAN FD for FD-capable hardware; Classic CAN remains the default.",
     ),
     BackendSpec(
         key="vector",
