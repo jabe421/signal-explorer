@@ -1,2 +1,0 @@
-add_executable(libicsneocpp-interactive-example src/InteractiveExample.cpp)
-target_link_libraries(libicsneocpp-interactive-example icsneocpp)

@@ -1,4 +1,0 @@
-sphinx
-icsneopy
-breathe
-sphinx_rtd_theme

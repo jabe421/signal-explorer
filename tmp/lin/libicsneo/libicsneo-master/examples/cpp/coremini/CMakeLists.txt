@@ -1,2 +1,0 @@
-add_executable(libicsneocpp-coremini src/coremini.cpp)
-target_link_libraries(libicsneocpp-coremini icsneocpp)
