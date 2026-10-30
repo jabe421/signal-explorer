@@ -1,0 +1,58 @@
+#ifndef __VALUECAN4_4_2EL_SETTINGS_H_
+#define __VALUECAN4_4_2EL_SETTINGS_H_
+
+#include "icsneo/device/idevicesettings.h"
+#include "icsneo/device/tree/valuecan4/settings/valuecan4settings.h"
+
+#ifdef __cplusplus
+
+namespace icsneo {
+
+class ValueCAN4_4_2ELSettings : public IDeviceSettings {
+public:
+	ValueCAN4_4_2ELSettings(Device* device) : IDeviceSettings(device, sizeof(valuecan4_4_2el_settings_t)) {}
+	const CAN_SETTINGS* getCANSettingsFor(Network net) const override {
+		auto cfg = getStructurePointer<valuecan4_4_2el_settings_t>();
+		if(cfg == nullptr)
+			return nullptr;
+		switch(net.getNetID()) {
+			case Network::NetID::DWCAN_01:
+				return &(cfg->can1);
+			case Network::NetID::DWCAN_02:
+				return &(cfg->can2);
+			default:
+				return nullptr;
+		}
+	}
+	const CANFD_SETTINGS* getCANFDSettingsFor(Network net) const override {
+		auto cfg = getStructurePointer<valuecan4_4_2el_settings_t>();
+		if(cfg == nullptr)
+			return nullptr;
+		switch(net.getNetID()) {
+			case Network::NetID::DWCAN_01:
+				return &(cfg->canfd1);
+			case Network::NetID::DWCAN_02:
+				return &(cfg->canfd2);
+			default:
+				return nullptr;
+		}
+	}
+
+	const LIN_SETTINGS* getLINSettingsFor(Network net) const override {
+		auto cfg = getStructurePointer<valuecan4_4_2el_settings_t>();
+		if(cfg == nullptr)
+			return nullptr;
+		switch(net.getNetID()) {
+			case Network::NetID::LIN_01:
+				return &(cfg->lin1);
+			default:
+				return nullptr;
+		}
+	}
+};
+
+}
+
+#endif // __cplusplus
+
+#endif

@@ -1,0 +1,164 @@
+#include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
+#include <pybind11/stl_bind.h>
+#include <pybind11/functional.h>
+#include <pybind11/chrono.h>
+
+#include "icsneo/device/idevicesettings.h"
+
+#include <fstream>
+
+namespace icsneo {
+
+struct DeviceSettingsNamespace {
+    using EthLinkMode = AELinkMode;
+};
+
+void init_idevicesettings(pybind11::module_& m) {
+    pybind11::classh<DeviceSettingsNamespace> settings(m, "Settings");
+
+    pybind11::enum_<DeviceSettingsNamespace::EthLinkMode>(settings, "EthernetLinkMode")
+        .value("Auto", DeviceSettingsNamespace::EthLinkMode::AE_LINK_AUTO)
+        .value("Slave", DeviceSettingsNamespace::EthLinkMode::AE_LINK_SLAVE)
+        .value("Master", DeviceSettingsNamespace::EthLinkMode::AE_LINK_MASTER);
+
+    pybind11::enum_<EthPhyLinkMode>(settings, "PhyLinkMode")
+        .value("ETH_LINK_MODE_AUTO_NEGOTIATION", ETH_LINK_MODE_AUTO_NEGOTIATION)
+        .value("ETH_LINK_MODE_10MBPS_HALFDUPLEX", ETH_LINK_MODE_10MBPS_HALFDUPLEX)
+        .value("ETH_LINK_MODE_10MBPS_FULLDUPLEX", ETH_LINK_MODE_10MBPS_FULLDUPLEX)
+        .value("ETH_LINK_MODE_100MBPS_HALFDUPLEX", ETH_LINK_MODE_100MBPS_HALFDUPLEX)
+        .value("ETH_LINK_MODE_100MBPS_FULLDUPLEX", ETH_LINK_MODE_100MBPS_FULLDUPLEX)
+        .value("ETH_LINK_MODE_1GBPS_HALFDUPLEX", ETH_LINK_MODE_1GBPS_HALFDUPLEX)
+        .value("ETH_LINK_MODE_1GBPS_FULLDUPLEX", ETH_LINK_MODE_1GBPS_FULLDUPLEX)
+        .value("ETH_LINK_MODE_2_5GBPS_FULLDUPLEX", ETH_LINK_MODE_2_5GBPS_FULLDUPLEX)
+        .value("ETH_LINK_MODE_5GBPS_FULLDUPLEX", ETH_LINK_MODE_5GBPS_FULLDUPLEX)
+        .value("ETH_LINK_MODE_10GBPS_FULLDUPLEX", ETH_LINK_MODE_10GBPS_FULLDUPLEX);
+
+    pybind11::enum_<LINMode>(settings, "LINMode")
+        .value("Sleep", LINMode::SLEEP_MODE)
+        .value("Slow", LINMode::SLOW_MODE)
+        .value("Normal", LINMode::NORMAL_MODE)
+        .value("Fast", LINMode::FAST_MODE);
+
+    pybind11::enum_<RADGPTPProfile>(settings, "GPTPProfile")
+        .value("Standard", RADGPTPProfile::RAD_GPTP_PROFILE_STANDARD)
+        .value("Automotive", RADGPTPProfile::RAD_GPTP_PROFILE_AUTOMOTIVE);
+
+    pybind11::enum_<RADGPTPRole>(settings, "GPTPRole")
+        .value("Disabled", RADGPTPRole::RAD_GPTP_ROLE_DISABLED)
+        .value("Passive", RADGPTPRole::RAD_GPTP_ROLE_PASSIVE)
+        .value("Master", RADGPTPRole::RAD_GPTP_ROLE_MASTER)
+        .value("Slave", RADGPTPRole::RAD_GPTP_ROLE_SLAVE);
+
+    pybind11::enum_<MiscIOAnalogVoltage>(settings, "MiscIOAnalogVoltage")
+        .value("V0", MiscIOAnalogVoltage::V0)
+        .value("V1", MiscIOAnalogVoltage::V1)
+        .value("V2", MiscIOAnalogVoltage::V2)
+        .value("V3", MiscIOAnalogVoltage::V3)
+        .value("V4", MiscIOAnalogVoltage::V4)
+        .value("V5", MiscIOAnalogVoltage::V5);
+
+    pybind11::enum_<LinuxConfigurationPort>(settings, "LinuxConfigurationPort")
+        .value("USB", LinuxConfigurationPort::USB)
+        .value("ETH01", LinuxConfigurationPort::ETH01);
+
+    pybind11::classh<IDeviceSettings>(m, "IDeviceSettings")
+        .def("apply", &IDeviceSettings::apply, pybind11::arg("temporary") = 0, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("apply_defaults", &IDeviceSettings::applyDefaults, pybind11::arg("temporary") = 0, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("refresh", &IDeviceSettings::refresh, pybind11::call_guard<pybind11::gil_scoped_release>())
+
+        // Baudrate methods
+        .def("get_baudrate", &IDeviceSettings::getBaudrateFor, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("set_baudrate", &IDeviceSettings::setBaudrateFor, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("get_fd_baudrate", &IDeviceSettings::getFDBaudrateFor, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("set_fd_baudrate", &IDeviceSettings::setFDBaudrateFor, pybind11::call_guard<pybind11::gil_scoped_release>())
+
+        // Termination methods
+        .def("is_termination_supported", &IDeviceSettings::isTerminationSupportedFor, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("can_termination_be_enabled", &IDeviceSettings::canTerminationBeEnabledFor, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("is_termination_enabled", &IDeviceSettings::isTerminationEnabledFor, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("set_termination", &IDeviceSettings::setTerminationFor, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("get_termination_groups", &IDeviceSettings::getTerminationGroups, pybind11::call_guard<pybind11::gil_scoped_release>())
+
+        // LIN methods
+        .def("is_commander_resistor_enabled", &IDeviceSettings::isCommanderResistorEnabledFor, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("set_commander_resistor", &IDeviceSettings::setCommanderResistorFor, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("get_lin_mode", &IDeviceSettings::getLINModeFor, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("set_lin_mode", &IDeviceSettings::setLINModeFor, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("get_lin_commander_response_time", &IDeviceSettings::getLINCommanderResponseTimeFor, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("set_lin_commander_response_time", &IDeviceSettings::setLINCommanderResponseTimeFor, pybind11::call_guard<pybind11::gil_scoped_release>())
+
+        // Ethernet PHY methods (index-based for switch devices)
+        .def("get_phy_enable", &IDeviceSettings::getPhyEnable, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("get_phy_mode", &IDeviceSettings::getPhyMode, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("get_phy_speed", &IDeviceSettings::getPhySpeed, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("set_phy_enable", &IDeviceSettings::setPhyEnable, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("set_phy_mode", &IDeviceSettings::setPhyMode, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("set_phy_speed", &IDeviceSettings::setPhySpeed, pybind11::call_guard<pybind11::gil_scoped_release>())
+
+        // Ethernet PHY methods (network-based for multi-interface devices)
+        .def("get_phy_enable_for", &IDeviceSettings::getPhyEnableFor, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("get_phy_role_for", &IDeviceSettings::getPhyRoleFor, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("get_phy_link_mode_for", &IDeviceSettings::getPhyLinkModeFor, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("set_phy_enable_for", &IDeviceSettings::setPhyEnableFor, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("set_phy_role_for", &IDeviceSettings::setPhyRoleFor, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("set_phy_link_mode_for", &IDeviceSettings::setPhyLinkModeFor, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("get_supported_phy_link_modes_for", &IDeviceSettings::getSupportedPhyLinkModesFor, pybind11::call_guard<pybind11::gil_scoped_release>())
+
+        // 10BASE-T1S methods
+        .def("is_t1s_plca_enabled", &IDeviceSettings::isT1SPLCAEnabledFor, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("set_t1s_plca", &IDeviceSettings::setT1SPLCAFor, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("get_t1s_local_id", &IDeviceSettings::getT1SLocalIDFor, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("set_t1s_local_id", &IDeviceSettings::setT1SLocalIDFor, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("get_t1s_max_nodes", &IDeviceSettings::getT1SMaxNodesFor, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("set_t1s_max_nodes", &IDeviceSettings::setT1SMaxNodesFor, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("get_t1s_tx_opp_timer", &IDeviceSettings::getT1STxOppTimerFor, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("set_t1s_tx_opp_timer", &IDeviceSettings::setT1STxOppTimerFor, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("get_t1s_max_burst", &IDeviceSettings::getT1SMaxBurstFor, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("set_t1s_max_burst", &IDeviceSettings::setT1SMaxBurstFor, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("get_t1s_burst_timer", &IDeviceSettings::getT1SBurstTimerFor, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("set_t1s_burst_timer", &IDeviceSettings::setT1SBurstTimerFor, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("get_t1s_local_id_alternate", &IDeviceSettings::getT1SLocalIDAlternateFor, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("set_t1s_local_id_alternate", &IDeviceSettings::setT1SLocalIDAlternateFor, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("is_t1s_termination_enabled", &IDeviceSettings::isT1STerminationEnabledFor, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("set_t1s_termination", &IDeviceSettings::setT1STerminationFor, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("is_t1s_bus_decoding_beacons_enabled", &IDeviceSettings::isT1SBusDecodingBeaconsEnabledFor, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("set_t1s_bus_decoding_beacons", &IDeviceSettings::setT1SBusDecodingBeaconsFor, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("is_t1s_bus_decoding_all_enabled", &IDeviceSettings::isT1SBusDecodingAllEnabledFor, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("set_t1s_bus_decoding_all", &IDeviceSettings::setT1SBusDecodingAllFor, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("get_t1s_multi_id_enable_mask", &IDeviceSettings::getT1SMultiIDEnableMaskFor, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("set_t1s_multi_id_enable_mask", &IDeviceSettings::setT1SMultiIDEnableMaskFor, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("get_t1s_multi_id", &IDeviceSettings::getT1SMultiIDFor, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("set_t1s_multi_id", &IDeviceSettings::setT1SMultiIDFor, pybind11::call_guard<pybind11::gil_scoped_release>())
+        
+        .def("set_misc_io_analog_output_enabled", &IDeviceSettings::setMiscIOAnalogOutputEnabled, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("set_misc_io_analog_output", &IDeviceSettings::setMiscIOAnalogOutput, pybind11::call_guard<pybind11::gil_scoped_release>())
+
+        // Performance blast
+        .def("is_perf_test_enabled", &IDeviceSettings::isPerfTestEnabled, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("set_perf_test_enable", &IDeviceSettings::setPerfTestEnable, pybind11::call_guard<pybind11::gil_scoped_release>())
+        // gPTP methods
+        .def("get_gptp_profile", &IDeviceSettings::getGPTPProfile, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("set_gptp_profile", &IDeviceSettings::setGPTPProfile, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("get_gptp_role", &IDeviceSettings::getGPTPRole, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("set_gptp_role", &IDeviceSettings::setGPTPRole, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("get_gptp_enabled_port", &IDeviceSettings::getGPTPEnabledPort, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("set_gptp_enabled_port", &IDeviceSettings::setGPTPEnabledPort, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("is_gptp_clock_syntonization_enabled", &IDeviceSettings::isGPTPClockSyntonizationEnabled, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("set_gptp_clock_syntonization_enabled", &IDeviceSettings::setGPTPClockSyntonizationEnabled, pybind11::call_guard<pybind11::gil_scoped_release>())
+
+        // Linux operating-system settings (Fire3 family devices)
+        .def("get_linux_boot_enabled", &IDeviceSettings::getLinuxBootEnabled, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("set_linux_boot_enabled", &IDeviceSettings::setLinuxBootEnabled, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("get_external_wifi_antenna_enabled", &IDeviceSettings::getExternalWifiAntennaEnabled, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("set_external_wifi_antenna_enabled", &IDeviceSettings::setExternalWifiAntennaEnabled, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("get_linux_configuration_port", &IDeviceSettings::getLinuxConfigurationPort, pybind11::call_guard<pybind11::gil_scoped_release>())
+        .def("set_linux_configuration_port", &IDeviceSettings::setLinuxConfigurationPort, pybind11::call_guard<pybind11::gil_scoped_release>())
+
+        // Status properties
+        .def_readonly("disabled", &IDeviceSettings::disabled)
+        .def_readonly("readonly", &IDeviceSettings::readonly);
+}
+
+} // namespace icsneo
+

@@ -1,0 +1,197 @@
+option(LIBICSNEO_BUILD_C_INTERACTIVE_EXAMPLE "Build the command-line interactive C example." ON)
+option(LIBICSNEO_BUILD_C_SIMPLE_EXAMPLE "Build the command-line simple C example." ON)
+option(LIBICSNEO_BUILD_C_LEGACY_EXAMPLE "Build the command-line simple C example." ON)
+option(LIBICSNEO_BUILD_C2_SIMPLE_EXAMPLE "Build the simple C2 example." ON)
+option(LIBICSNEO_BUILD_C2_SUPPORTED_DEVICES_EXAMPLE "Build the C2 supported devices example." ON)
+option(LIBICSNEO_BUILD_C2_READ_MESSAGES_EXAMPLE "Build the C2 read messages example." ON)
+option(LIBICSNEO_BUILD_C2_DISKFORMAT_EXAMPLE "Build the C2 disk format example." ON)
+option(LIBICSNEO_BUILD_C2_RECONNECT_EXAMPLE "Build the C2 reconnect example." ON)
+option(LIBICSNEO_BUILD_C2_DEVICE_INFO_EXAMPLE "Build the C2 device info example." ON)
+option(LIBICSNEO_BUILD_C2_CHIP_VERSIONS_EXAMPLE "Build the C2 chip versions example." ON)
+option(LIBICSNEO_BUILD_C2_TERMINATION_EXAMPLE "Build the C2 termination groups example." ON)
+option(LIBICSNEO_BUILD_C2_LIN_EXAMPLE "Build the C2 LIN example." ON)
+option(LIBICSNEO_BUILD_C2_LIN_TRANSMIT_EXAMPLE "Build the C2 LIN transmit example." ON)
+option(LIBICSNEO_BUILD_C2_ETHERNET_TRANSMIT_EXAMPLE "Build the C2 ethernet transmit example." ON)
+option(LIBICSNEO_BUILD_C2_ETHERNET_RECEIVE_EXAMPLE "Build the C2 ethernet receive example." ON)
+option(LIBICSNEO_BUILD_C2_ETHERNET_STATUS_EXAMPLE "Build the C2 ethernet status example." ON)
+option(LIBICSNEO_BUILD_C2_T1S_LOOPBACK_EXAMPLE "Build the C2 RAD-Comet3 T1S loopback example." ON)
+option(LIBICSNEO_BUILD_C2_TC10_EXAMPLE "Build the C2 TC10 example." ON)
+option(LIBICSNEO_BUILD_C2_GPTP_EXAMPLE "Build the C2 gPTP settings example." ON)
+option(LIBICSNEO_BUILD_C2_PERF_TEST_EXAMPLE "Build the C2 PerfTest setting example." ON)
+option(LIBICSNEO_BUILD_CPP_SIMPLE_EXAMPLE "Build the simple C++ example." ON)
+option(LIBICSNEO_BUILD_CPP_DEVICE_INFO_EXAMPLE "Build the C++ device info example." ON)
+option(LIBICSNEO_BUILD_CPP_INTERACTIVE_EXAMPLE "Build the command-line interactive C++ example." ON)
+option(LIBICSNEO_BUILD_CPP_A2B_EXAMPLE "Build the A2B example." ON)
+option(LIBICSNEO_BUILD_CPP_LIN_EXAMPLE "Build the LIN example." ON)
+option(LIBICSNEO_BUILD_CPP_LIVEDATA_EXAMPLE "Build the Live Data example." ON)
+option(LIBICSNEO_BUILD_CPP_COREMINI_EXAMPLE "Build the Coremini example." ON)
+option(LIBICSNEO_BUILD_CPP_MDIO_EXAMPLE "Build the MDIO example." ON)
+option(LIBICSNEO_BUILD_CPP_VSA_EXAMPLE "Build the VSA example." ON)
+option(LIBICSNEO_BUILD_CPP_APP_ERROR_EXAMPLE "Build the app error example." ON)
+option(LIBICSNEO_BUILD_CPP_APP_ERROR_EXAMPLE "Build the macsec example" ON)
+option(LIBICSNEO_BUILD_CPP_FLEXRAY_EXAMPLE "Build the FlexRay example." ON)
+option(LIBICSNEO_BUILD_CPP_SPI_EXAMPLE "Build the SPI example." ON)
+option(LIBICSNEO_BUILD_CPP_MUTEX_EXAMPLE "Build the NetworkMutex example." ON)
+option(LIBICSNEO_BUILD_CPP_ANALOG_OUT_EXAMPLE "Build the analog output example." ON)
+option(LIBICSNEO_BUILD_CPP_DISKFORMAT_EXAMPLE "Build the disk format example." ON)
+option(LIBICSNEO_BUILD_CPP_T1S_EXAMPLE "Build the T1S example." ON)
+option(LIBICSNEO_BUILD_CPP_GPTP_EXAMPLE "Build the C++ gPTP settings example." ON)
+option(LIBICSNEO_BUILD_CPP_ISO15765_LOOPBACK_EXAMPLE "Build the C++ ISO15765 two-device CAN1 loopback example." ON)
+
+add_compile_options(${LIBICSNEO_COMPILER_WARNINGS})
+
+if(LIBICSNEO_BUILD_C_INTERACTIVE_EXAMPLE)
+	add_subdirectory(c/interactive)
+endif()
+
+if(LIBICSNEO_BUILD_C_SIMPLE_EXAMPLE)
+	add_subdirectory(c/simple)
+endif()
+
+if(LIBICSNEO_BUILD_C_LEGACY_EXAMPLE)
+	add_subdirectory(c/legacy)
+endif()
+
+if(LIBICSNEO_BUILD_C2_SIMPLE_EXAMPLE)
+	add_subdirectory(c2/simple)
+endif()
+
+if(LIBICSNEO_BUILD_C2_SUPPORTED_DEVICES_EXAMPLE)
+	add_subdirectory(c2/supported_devices)
+endif()
+
+if(LIBICSNEO_BUILD_C2_READ_MESSAGES_EXAMPLE)
+	add_subdirectory(c2/read_messages)
+endif()
+
+if(LIBICSNEO_BUILD_C2_DISKFORMAT_EXAMPLE)
+	add_subdirectory(c2/diskformat)
+endif()
+
+if(LIBICSNEO_BUILD_C2_RECONNECT_EXAMPLE)
+	add_subdirectory(c2/reconnect)
+endif()
+
+if(LIBICSNEO_BUILD_C2_DEVICE_INFO_EXAMPLE)
+	add_subdirectory(c2/device_info)
+endif()
+
+if(LIBICSNEO_BUILD_C2_CHIP_VERSIONS_EXAMPLE)
+	add_subdirectory(c2/chip_versions)
+endif()
+
+if(LIBICSNEO_BUILD_C2_TERMINATION_EXAMPLE)
+	add_subdirectory(c2/termination)
+endif()
+
+if(LIBICSNEO_BUILD_C2_LIN_EXAMPLE)
+	add_subdirectory(c2/lin)
+endif()
+
+if(LIBICSNEO_BUILD_C2_LIN_TRANSMIT_EXAMPLE)
+	add_subdirectory(c2/lin_transmit)
+endif()
+
+if(LIBICSNEO_BUILD_C2_ETHERNET_TRANSMIT_EXAMPLE)
+	add_subdirectory(c2/ethernet_transmit)
+endif()
+
+if(LIBICSNEO_BUILD_C2_ETHERNET_RECEIVE_EXAMPLE)
+	add_subdirectory(c2/ethernet_receive)
+endif()
+
+if(LIBICSNEO_BUILD_C2_ETHERNET_STATUS_EXAMPLE)
+	add_subdirectory(c2/ethernet_status)
+endif()
+
+if(LIBICSNEO_BUILD_C2_T1S_LOOPBACK_EXAMPLE)
+	add_subdirectory(c2/t1s_loopback)
+endif()
+
+if(LIBICSNEO_BUILD_C2_TC10_EXAMPLE)
+	add_subdirectory(c2/tc10)
+endif()
+
+if(LIBICSNEO_BUILD_C2_GPTP_EXAMPLE)
+	add_subdirectory(c2/gptp)
+endif()
+
+if(LIBICSNEO_BUILD_C2_PERF_TEST_EXAMPLE)
+	add_subdirectory(c2/perf_test)
+endif()
+
+if(LIBICSNEO_BUILD_CPP_SIMPLE_EXAMPLE)
+	add_subdirectory(cpp/simple)
+endif()
+
+if(LIBICSNEO_BUILD_CPP_DEVICE_INFO_EXAMPLE)
+	add_subdirectory(cpp/device_info)
+endif()
+
+if(LIBICSNEO_BUILD_CPP_INTERACTIVE_EXAMPLE)
+	add_subdirectory(cpp/interactive)
+endif()
+
+if(LIBICSNEO_BUILD_CPP_A2B_EXAMPLE)
+	add_subdirectory(cpp/a2b)
+endif()
+
+if(LIBICSNEO_BUILD_CPP_LIN_EXAMPLE)
+	add_subdirectory(cpp/lin)
+endif()
+
+if(LIBICSNEO_BUILD_CPP_LIVEDATA_EXAMPLE)
+	add_subdirectory(cpp/livedata)
+endif()
+
+if(LIBICSNEO_BUILD_CPP_COREMINI_EXAMPLE)
+	add_subdirectory(cpp/coremini)
+endif()
+
+if(LIBICSNEO_BUILD_CPP_MDIO_EXAMPLE)
+	add_subdirectory(cpp/mdio)
+endif()
+
+if(LIBICSNEO_BUILD_CPP_VSA_EXAMPLE)
+	add_subdirectory(cpp/vsa)
+endif()
+
+if(LIBICSNEO_BUILD_CPP_APP_ERROR_EXAMPLE)
+	add_subdirectory(cpp/apperror)
+endif()
+
+if(LIBICSNEO_BUILD_CPP_APP_ERROR_EXAMPLE)
+	add_subdirectory(cpp/macsec)
+endif()
+
+if(LIBICSNEO_BUILD_CPP_FLEXRAY_EXAMPLE)
+    add_subdirectory(cpp/flexray)
+endif()
+
+if(LIBICSNEO_BUILD_CPP_SPI_EXAMPLE)
+    add_subdirectory(cpp/spi)
+endif()
+
+if(LIBICSNEO_BUILD_CPP_MUTEX_EXAMPLE)
+	add_subdirectory(cpp/mutex)
+endif()
+
+if(LIBICSNEO_BUILD_CPP_ANALOG_OUT_EXAMPLE)
+	add_subdirectory(cpp/analog_out)
+endif()
+
+if(LIBICSNEO_BUILD_CPP_DISKFORMAT_EXAMPLE)
+	add_subdirectory(cpp/diskformat)
+endif()
+
+if(LIBICSNEO_BUILD_CPP_T1S_EXAMPLE)
+	add_subdirectory(cpp/t1s)
+endif()
+
+if(LIBICSNEO_BUILD_CPP_GPTP_EXAMPLE)
+	add_subdirectory(cpp/gptp)
+endif()
+
+if(LIBICSNEO_BUILD_CPP_ISO15765_LOOPBACK_EXAMPLE)
+	add_subdirectory(cpp/iso15765_loopback)
+endif()

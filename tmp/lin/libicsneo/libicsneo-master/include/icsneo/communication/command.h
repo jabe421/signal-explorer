@@ -1,0 +1,124 @@
+#ifndef __COMMAND_H_
+#define __COMMAND_H_
+
+#ifdef __cplusplus
+
+namespace icsneo {
+
+enum class Command : uint8_t {
+	// Device-originated Main51 event/error notifications (device -> host)
+	Main51RxBufferOverflow = 0x01,
+	Main51StartCmd = 0x02,
+	Main51TxFifoOverflow = 0x03,
+	Main51BulkInNoData = 0x04,
+	Main51SetModeComplete = 0x05,
+	Main51ReadEeprom = 0x06,
+	// 0x07, 0x08, 0x09 reserved for host->device commands below
+	Main51CmdDone = 0x0A,
+	Main51ErrStatus = 0x0B,
+	Main51ReadSectorBuff = 0x0C,
+	Main51WriteSectorBuff = 0x0D,
+	Main51MmcProcessDone = 0x0E,
+	Main51ReInitDone = 0x0F,
+
+	// Host-originated commands (host -> device)
+	EnableNetworkCommunication = 0x07,
+	EnableNetworkCommunicationEx = 0x08,
+	KeepAlive = 0x09,
+	NeoReadMemory = 0x40,
+	NeoWriteMemory = 0x41,
+	ClearCoreMini = 0x42,
+	LoadCoreMini = 0x43,
+	GetRTC = 0x49,
+	SetRTC = 0x50,
+	PeripheralBootloader = 0x83,
+	EnterBootloader = 0xA0,
+	RequestSerialNumber = 0xA1,
+	ValidateDevice = 0xA2,
+	GetMainVersion = 0xA3, // Previously known as RED_CMD_APP_VERSION_REQ
+	SetSettings = 0xA4, // Previously known as RED_CMD_SET_BAUD_REQ, follow up with SaveSettings to write to EEPROM
+	//GetSettings = 0xA5, // Previously known as RED_CMD_READ_BAUD_REQ, now unused
+	SaveSettings = 0xA6,
+	UpdateLEDState = 0xA7,
+	SetDefaultSettings = 0xA8, // Follow up with SaveSettings to write to EEPROM
+	GetSecondaryVersions = 0xA9, // Previously known as RED_CMD_PERIPHERALS_APP_VERSION_REQ, versions other than the main chip
+	GetHardwareInfo = 0xB7, // Previously known as RED_CMD_HARDWARE_VERSION_REQ
+	GetLogicalDiskInfo = 0xBB, // Previously known as RED_CMD_GET_SDCARD_INFO
+	RequestStatusUpdate = 0xBC,
+	ReadSettings = 0xC7, // Previously known as 3G_READ_SETTINGS_EX
+	J2534Command = 0xD7, // Previously known as RED_CMD_J2534_EXTENSION
+	SetVBattMonitor = 0xDB, // Previously known as RED_CMD_CM_VBATT_MONITOR
+	RequestBitSmash = 0xDC, // Previously known as RED_CMD_CM_BITSMASH
+	WiVICommand = 0xDD, // Previously known as RED_CMD_WIVI_COMM
+	GetVBattReq = 0xDF, // Previously known as RED_CMD_VBATT_REQUEST
+	ScriptStatus = 0xE0, // Previously known as RED_CMD_SCRIPT_STATUS
+	MiscControl = 0xE7,
+	NeoEraseMemory = 0xEA, // Previously known as RED_CMD_ERASE_MEMORY
+	Extended = 0xF0, // Previously known as RED_CMD_EXT_COMM
+	ExtendedData = 0xF2, // Previously known as RED_CMD_EXTENDED_DATA
+	FlexRayControl = 0xF3,
+	CoreMiniPreload = 0xF4, // Previously known as RED_CMD_COREMINI_PRELOAD
+	PHYControlRegisters = 0xEF,
+	EnableLogData = 0xF6,
+};
+
+enum class ExtendedCommand : uint16_t {
+	GenericReturn = 0x0000,
+	GetDiskDetails = 0x0010,
+	DiskFormatStart = 0x0011,
+	DiskFormatCancel = 0x0012,
+	DiskFormatProgress = 0x0013,
+	DiskFormatUpdate = 0x0014,
+	Extract = 0x0015,
+	StartDHCPServer = 0x0016,
+	StopDHCPServer = 0x0017,
+	GetSupportedFeatures = 0x0018,
+	GetGPTPStatus = 0x0019,
+	GetComponentVersions = 0x001A,
+	SoftwareUpdate = 0x001B,
+	Reboot = 0x001C,
+	ReadGenericAPIStatus = 0x001D,
+	SetRootFSEntryFlags = 0x0027,
+	TransmitCoreminiMessage = 0x0028,
+	ReadGenericAPIData = 0x002E,
+	WriteGenericAPICommand = 0x002F,
+	GenericBinaryInfo = 0x0030,
+	LiveData = 0x0035,
+	ExecuteSPIPortKeyOperation = 0x003C,
+	RequestTC10Wake = 0x003D,
+	RequestTC10Sleep = 0x003E,
+	GetTC10Status = 0x003F,
+	GetAllMACAddresses = 0x0040,
+	ProtobufAPI = 0x0041,
+	TransmitMessage = 0x0042,
+};
+
+enum class ExtendedResponse : int32_t {
+	OK = 0,
+	InvalidCommand = -1,
+	InvalidState = -2,
+	OperationFailed = -3,
+	OperationPending = -4,
+	InvalidParameter = -5,
+};
+
+enum class ExtendedDataSubCommand : uint32_t {
+	GenericBinaryRead = 13,
+	GenericBinaryWrite = 14,
+};
+
+#pragma pack(push,1)
+struct ExtendedCommandHeader {
+	uint8_t netid; // should be Main51
+	uint16_t fullLength;
+	uint8_t command; // should be Command::Extended
+	uint16_t extendedCommand;
+	uint16_t payloadLength;
+};
+#pragma pack(pop)
+
+}
+
+#endif // __cplusplus
+
+#endif

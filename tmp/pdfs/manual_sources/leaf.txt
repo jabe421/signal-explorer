@@ -1,0 +1,360 @@
+Kvaser Leaf Light R v2 User’s Guide
+Copyright 2026 Kvaser AB, Mölndal, Sweden
+https://www.kvaser.com
+Printed Wednesday 7th October, 2026
+We believe that the information contained herein was accurate in all respects at the time of printing.
+Kvaser AB cannot, however, assume any responsibility for errors or omissions in this text. Also note
+that the information in this document is subject to change without notice and should not be construed
+as a commitment by Kvaser AB.
+Kvaser Leaf Light R v2 User’s Guide 2 (19)
+(This page is intentionally left blank.)
+Kvaser AB, Mölndal, Sweden — www.kvaser.com
+Kvaser Leaf Light R v2 User’s Guide 3 (19)
+Contents
+1 About this manual 4
+2 Introduction 5
+2.1 Welcome to Kvaser Leaf Light R v2 . . . . . . . . . . . . . . . . . . 5
+2.2 Major features . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 6
+2.3 Additional software and documentation . . . . . . . . . . . . . . . . 6
+3 Kvaser Leaf Light R v2 hardware 7
+3.1 Hardware installation . . . . . . . . . . . . . . . . . . . . . . . . . . 7
+3.2 USB connector . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 7
+3.3 CAN channel . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 8
+3.4 Power supply . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 8
+3.5 LED Indicators . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 8
+3.6 Troubleshooting . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 9
+4 Appendices 10
+4.1 Technical data . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 10
+4.2 CAN connector . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 11
+4.3 CAN bus termination . . . . . . . . . . . . . . . . . . . . . . . . . . 11
+4.4 Updating the ﬁrmware . . . . . . . . . . . . . . . . . . . . . . . . . . 11
+5 Safety Instructions 13
+5.1 Intended Use . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 13
+5.2 Usage Warning . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 13
+6 Disposal and Recycling Information 14
+7 Legal acknowledgements 16
+7.1 EU Regulatory Compliance . . . . . . . . . . . . . . . . . . . . . . . 16
+7.2 FCC Regulatory Compliance . . . . . . . . . . . . . . . . . . . . . . 17
+7.3 Patents, Copyrights and Trademarks . . . . . . . . . . . . . . . . . . 18
+8 Document Revision History 19
+Kvaser AB, Mölndal, Sweden — www.kvaser.com
+Kvaser Leaf Light R v2 User’s Guide 4 (19)
+1 About this manual
+This manual is intended for Kvaser Leaf Light R v2 users. This document contains
+a description of the hardware’s properties and general instructions for connecting
+the device to a computer.
+Kvaser AB, Mölndal, Sweden — www.kvaser.com
+Kvaser Leaf Light R v2 User’s Guide 5 (19)
+2 Introduction
+This section will describe the functions and features of the Kvaser Leaf Light R v2.
+2.1 Welcome to Kvaser Leaf Light R v2
+Figure 1: Kvaser Leaf Light R v2
+Kvaser Leaf Light R v2 is a reliable low cost product. In hostile environments
+where dust and water are the norm, the IP65 rated housing assures reliable
+protection. With a time stamp precision of 100 microseconds it handles
+transmission and reception of standard and extended CAN messages on the bus.
+It is compatible with applications that use Kvaser’s CANlib.
+This guide applies to Kvaser Leaf Light R v2 devices listed in Table 1.
+Device Product Number
+Kvaser Leaf Light R v2 73-30130-00921-9
+Table 1: Kvaser Leaf Light R v2 devices and their EAN numbers.
+Kvaser AB, Mölndal, Sweden — www.kvaser.com
+Kvaser Leaf Light R v2 User’s Guide 6 (19)
+2.2 Major features
+• USB CAN interface.
+• IP65 rated lightweight aluminum housing.
+• Quick and easy plug-and-play installation.
+• Supports both 11-bit (CAN 2.0A) and 29-bit (CAN 2.0B active) identiﬁers.
+• 100% compatible with applications written for other Kvaser CAN hardware
+with Kvaser CANlib.
+• High-speed CAN connection (compliant with ISO 11898-2), up to 1 Mbit/s.
+• Fully compatible with J1939, CANopen, NMEA 2000
+R⃝ and DeviceNet.
+• Supports simultaneous usage of multiple Kvaser interfaces.
+2.3 Additional software and documentation
+The Kvaser CANlib SDK includes everything you need in order to develop software
+applications interacting with Kvaser CAN and LIN hardware. The SDK contains full
+documentation and many sample programs, written in C, C++, C#, Delphi, Python
+and Visual Basic. Kvaser CAN and LIN hardware is built around the same common
+software API. Applications developed using one device type will run without
+modiﬁcation on other device types.
+The latest versions of documentation, software and drivers can be downloaded for
+free at www.kvaser.com/download.
+Kvaser AB, Mölndal, Sweden — www.kvaser.com
+Kvaser Leaf Light R v2 User’s Guide 7 (19)
+3 Kvaser Leaf Light R v2 hardware
+In this section you can read more about the CAN channels, power supply and LED
+indicators.
+3.1 Hardware installation
+For the Kvaser Leaf Light R v2 to communicate with the host computer, a
+compatible version of the Kvaser driver and ﬁrmware must be installed.
+After the driver has been installed on the host computer, the ﬁrmware may then be
+downloaded and installed on the Kvaser Leaf Light R v2.
+The latest version of the driver and ﬁrmware can be downloaded from
+www.kvaser.com/download.
+The driver is installed by running the ﬁlekvaser_drivers_setup.exe .
+The Kvaser Leaf Light R v2 may be inserted in any free USB socket on the host
+computer. You do not need to switch the power off before inserting or removing the
+device.
+For information on how to upgrade the ﬁrmware, see Section 4.4, Updating the
+ﬁrmware, on Page 11.
+3.2 USB connector
+The Kvaser Leaf Light R v2 has a standard USB type “A” connector.
+Figure 2: A standard USB type “A” connector.
+Kvaser AB, Mölndal, Sweden — www.kvaser.com
+Kvaser Leaf Light R v2 User’s Guide 8 (19)
+3.3 CAN channel
+The Kvaser Leaf Light R v2 has one CAN Hi-Speed channel with a 9-pin D-SUB
+CAN connector. See Section 4.2, CAN connector, on Page 11 for details about the
+pinout.
+Figure 3: 9-pin D-SUB CAN connector
+3.4 Power supply
+The Kvaser Leaf Light R v2 is powered from the USB port.
+3.5 LED Indicators
+The Kvaser Leaf Light R v2 has two LEDs as shown in Figure 4. Their functions
+are shown in Table 2 on Page 9.
+Figure 4: LEDs on the Kvaser Leaf Light R v2.
+Kvaser AB, Mölndal, Sweden — www.kvaser.com
+Kvaser Leaf Light R v2 User’s Guide 9 (19)
+LED Function Description
+PWR (Green) Power Steady light when unit is powered and working.
+USB conﬁguration Blinking once every three seconds when something is
+wrong with the USB connection.
+Firmware 2 Hz ﬂash if something is wrong with the ﬁrmware or
+conﬁguration.
+CAN (Yellow) CAN RxTx Status for CAN channel.
+Table 2: LEDs on the Kvaser Leaf Light R v2.
+3.6 Troubleshooting
+Use “Kvaser Device Guide” in the Control Panel to verify that the computer can
+communicate with the Kvaser Leaf Light R v2. If the ﬁrmware version shown is all
+zeros, there are communication problems. If the LEDs are not ﬂashing or do not
+light up at all, check the power supply.
+Kvaser AB, Mölndal, Sweden — www.kvaser.com
+Kvaser Leaf Light R v2 User’s Guide 10 (19)
+4 Appendices
+In this section you will ﬁnd technical information about the Kvaser Leaf Light R v2
+and its connectors.
+4.1 Technical data
+In Table 3 below you will ﬁnd the Kvaser Leaf Light R v2’s technical speciﬁcations.
+CAN Channels 1
+CAN Transceivers TJA1051T (Compliant with ISO 11898-2)
+CAN Controller Built into the processor
+Galvanic isolation Yes
+CAN Bit Rate 50 kbit/s to 1 Mbit/s
+Time stamp resolution 100 µs
+Max message rate 8000 msg/s
+Error Frame Detection Yes
+Error Frame Generation No
+Silent mode No
+Kvaser t Script No
+Kvaser CANtegrity No
+Host interface USB Hi-Speed
+Host OS Windows (7 or later), Linux, Android.
+Power consumption Typical 90mA
+Hardware conﬁguration Done by software (Plug & Play).
+Dimensions 30 x 200 x 17 mm for body incl. strain relief
+Weight 148 g
+Operating temperature −40 ◦C to +70 ◦C
+Storage temperature −40 ◦C to +85 ◦C
+Relative humidity 0 % to 85 % (non-condensing.)
+IP Rating IP65
+Table 3: Technical Speciﬁcations.
+Kvaser AB, Mölndal, Sweden — www.kvaser.com
+Kvaser Leaf Light R v2 User’s Guide 11 (19)
+4.2 CAN connector
+Kvaser Leaf Light R v2 devices that use the 9-pin D-SUB connector (see Figure 5)
+have the pinning described in Table 4.
+Figure 5: The D-SUB 9 connector pin numbers
+D-SUB pin number Function
+1 Not connected
+2 CAN_L
+3 GND
+4 Not connected
+5 Shield
+6 Not connected
+7 CAN_H
+8 Not connected
+9 Not connected
+Table 4: Conﬁguration of the 9-pin D-SUB
+4.3 CAN bus termination
+Every CAN bus must be terminated with a 120 Ohm resistor at each end of the
+bus. The Kvaser Leaf Light R v2 does not contain any CAN bus termination,
+because their inclusion could cause severe disturbance in a system which is
+already correctly terminated.
+For laboratory or testing use, the exact value of the termination resistors is not
+always critical. Sometimes a single terminator is sufﬁcient. For production, proper
+termination is essential. If you see error frames on the bus, you should check the
+termination.
+To save yourself a lot of trouble, always terminate the CAN
+bus properly.
+4.4 Updating the ﬁrmware
+For the Kvaser Leaf Light R v2 to communicate with the host computer, compatible
+versions of the Kvaser CANlib (including driver) and ﬁrmware must be installed.
+Kvaser AB, Mölndal, Sweden — www.kvaser.com
+Kvaser Leaf Light R v2 User’s Guide 12 (19)
+The latest versions of ﬁrmware and drivers can be downloaded for free at
+www.kvaser.com/download.
+Connect the Kvaser Leaf Light R v2 to your host computer with the USB cable.
+Start the update.exe application. A window opens where you should see the
+device listed if correctly connected to your host computer. Select the device to
+update and click the Next button. Read the Release Notes carefully.
+Click on the Start Upgrade button to start programming. Programming takes
+approximately 30 s. The progress is displayed on the screen.
+If you see any error messages, try to disconnect and reconnect the device, and
+then perform the operation again.
+To verify that the ﬁrmware has been updated, open “Kvaser Device Guide” in
+Control Panel. Select “Kvaser Leaf Light R v2” in the tree view to the left, and click
+on the channel. The ﬁrmware revision information appears in the right half of the
+window.
+Kvaser AB, Mölndal, Sweden — www.kvaser.com
+Kvaser Leaf Light R v2 User’s Guide 13 (19)
+5 Safety Instructions
+5.1 Intended Use
+Kvaser interfaces are used to connect computer systems to CAN buses. The
+Kvaser Leaf Light R v2 is intended for connection to a computer via the USB port.
+5.2 Usage Warning
+WARNING FOR ALL USERS
+WARNING! - YOUR USE OF THIS DEVICE MUST BE DONE WITH CAUTION AND A FULL
+UNDERSTANDING OF THE RISKS!
+THIS WARNING IS PRESENTED TO INFORM YOU THAT THE OPERATION OF THIS DEVICE
+MAY BE DANGEROUS. YOUR ACTIONS CAN INFLUENCE THE BEHAVIOR OF A CAN-BASED
+DISTRIBUTED EMBEDDED SYSTEM, AND DEPENDING ON THE APPLICATION, THE
+CONSEQUENCES OF YOUR IMPROPER ACTIONS COULD CAUSE SERIOUS OPERATIONAL
+MALFUNCTION, LOSS OF INFORMATION, DAMAGE TO EQUIPMENT, AND PHYSICAL
+INJURY TO YOURSELF AND OTHERS. A POTENTIALLY HAZARDOUS OPERATING
+CONDITION IS PRESENT WHEN THE FOLLOWING TWO CONDITIONS ARE
+CONCURRENTLY TRUE: THE PRODUCT IS PHYSICALLY INTERCONNECTED TO A REAL
+DISTRIBUTED EMBEDDED SYSTEM; AND THE FUNCTIONS AND OPERATIONS OF THE
+REAL DISTRIBUTED EMBEDDED SYSTEM ARE CONTROLLABLE OR INFLUENCED BY THE
+USE OF THE CAN NETWORK. A POTENTIALLY HAZARDOUS OPERATING CONDITION MAY
+RESULT FROM THE ACTIVITY OR NON-ACTIVITY OF SOME DISTRIBUTED EMBEDDED
+SYSTEM FUNCTIONS AND OPERATIONS, WHICH MAY RESULT IN SERIOUS PHYSICAL
+HARM OR DEATH OR CAUSE DAMAGE TO EQUIPMENT, DEVICES, OR THE SURROUNDING
+ENVIRONMENT.
+WITH THIS DEVICE, YOU MAY POTENTIALLY:
+• CAUSE A CHANGE IN THE OPERATION OF THE SYSTEM, MODULE, DEVICE,
+CIRCUIT, OR OUTPUT.
+• TURN ON OR ACTIVATE A MODULE, DEVICE, CIRCUIT, OUTPUT, OR FUNCTION.
+• TURN OFF OR DEACTIVATE A MODULE, DEVICE, CIRCUIT, OUTPUT, OR
+FUNCTION.
+• INHIBIT, TURN OFF, OR DEACTIVATE NORMAL OPERATION.
+• MODIFY THE BEHAVIOR OF A DISTRIBUTED PRODUCT.
+• ACTIVATE AN UNINTENDED OPERATION.
+• PLACE THE SYSTEM, MODULE, DEVICE, CIRCUIT, OR OUTPUT INTO AN
+UNINTENDED MODE.
+ONLY THOSE PERSONS WHO:
+(A) ARE PROPERLY TRAINED AND QUALIFIED WITH RESPECT TO THE USE OF THE
+DEVICE,
+(B) UNDERSTAND THE WARNINGS ABOVE, AND
+(C) UNDERSTAND HOW THIS DEVICE INTERACTS WITH AND IMPACTS THE FUNCTION
+AND SAFETY OF OTHER PRODUCTS IN A DISTRIBUTED SYSTEM AND THE APPLICATION
+FOR WHICH THIS DEVICE WILL BE APPLIED, MAY USE THE DEVICE.
+PLEASE NOTE THAT YOU CAN INTEGRATE THIS PRODUCT AS A SUBSYSTEM INTO
+HIGHER-LEVEL SYSTEMS. IN CASE YOU DO SO, KVASER AB HEREBY DECLARES THAT
+KVASER AB’S WARRANTY SHALL BE LIMITED TO THE CORRECTION OF DEFECTS, AND
+KVASER AB HEREBY EXPRESSLY DISCLAIMS ANY LIABILITY OVER AND ABOVE THE
+REFUNDING OF THE PRICE PAID FOR THIS DEVICE, SINCE KVASER AB DOES NOT HAVE
+ANY INFLUENCE ON THE IMPLEMENTATIONS OF THE HIGHER-LEVEL SYSTEM, WHICH
+MAY BE DEFECTIVE.
+Kvaser AB, Mölndal, Sweden — www.kvaser.com
+Kvaser Leaf Light R v2 User’s Guide 14 (19)
+6 Disposal and Recycling Information
+When this product reaches its end of life, please dispose of it
+according to your local environmental laws and guidelines.
+For information about Kvaser’s recycling programs, visit:
+https://www.kvaser.com/en/kvaser/recycling-policy.html
+Kvaser AB, Mölndal, Sweden — www.kvaser.com
+Kvaser Leaf Light R v2 User’s Guide 15 (19)
+Kvaser AB, Mölndal, Sweden — www.kvaser.com
+Kvaser Leaf Light R v2 User’s Guide 16 (19)
+7 Legal acknowledgements
+7.1 EU Regulatory Compliance
+Company Name:
+Postal address:
+Postcode:
+City:
+Telephone number:
+E-mail address:
+Product:
+EU Declaration of Conformity (DoC)
+We
+Kvaser AB
+Aminogatan 25
+431 53
+M¨ olndal
++46 31 886344
+sales@kvaser.com
+declare that the DoC is issued under our sole responsibility and belongs to the following product:
+Kvaser Leaf Light R v2
+Object of the declaration (identiﬁcation of apparatus allowing traceability):
+Product: Kvaser Leaf Light R v2
+Type: 73-30130-00921-9
+The object of the declaration described above is in conformity with the relevant Union harmonisation
+legislation:
+Electromagnetic Compatibility (EMC) Directive 2014/30/EU (Art. 6)
+RoHS recast Directive 2011/65/EU (Art. 4.1)
+The following harmonised standards and technical speciﬁcations have been applied
+(title, date of standard/speciﬁcation):
+EN 55032 (2015 + A11:2020) EN 55035 (2017 + A11:2020)
+EN IEC 63000 (2018)
+Signed for and on behalf of:
+M¨ olndal
+Place of issue
+2025-01-10
+Date of issue Kent Lennartsson, Research Manager
+Kvaser AB, Mölndal, Sweden — www.kvaser.com
+Kvaser Leaf Light R v2 User’s Guide 17 (19)
+7.2 FCC Regulatory Compliance
+Federal Communications Commission (FCC) Compliance Information Statement
+IDENTIFICATION OBJECT:
+Product: Kvaser Leaf Light R v2
+Type: 73-30130-00921-9
+APPLICABLE COMPLIANCE STATEMENTS:
+CFR Title 47 Part 15 §15.107, §15.109
+This device complies with part 15 of the FCC Rules.
+Operation is subject to the following two conditions:
+(1) This device may not cause harmful interference, and
+(2) this device must accept any interference received,
+including interference that may cause undesired operation.
+RESPONSIBLE PARTY (IN USA) NAME:
+Kvaser Inc.
+41650 Gardenbrook Road, Suite 130
+Novi, MI 48375
+Internet contact: support@kvaser.com
+Kvaser AB, Mölndal, Sweden — www.kvaser.com
+Kvaser Leaf Light R v2 User’s Guide 18 (19)
+7.3 Patents, Copyrights and Trademarks
+All trademarks are the property of their respective owner. Windows is a registered
+trademark of Microsoft Corporation in the United States and other countries.
+Adobe, the Adobe logo, and Reader are either registered trademarks or trademarks
+of Adobe Systems Incorporated in the United States and/or other countries.
+DeviceNet is a trademark of Open DeviceNet Vendor Association, Inc.
+NMEA 2000 is the registered trademark of the National Marine Electronics
+Association, Inc.
+For information about Kvaser related CAN patents, see www.kvaser.com/patent.
+The products described in this document are protected by U.S. patent 5,696,911.
+Kvaser AB, Mölndal, Sweden — www.kvaser.com
+Kvaser Leaf Light R v2 User’s Guide 19 (19)
+8 Document Revision History
+Version history for document UG_98186_leaf_light_r_v2:
+Revision Date Changes
+1 2017-01-18 Initial version.
+2.0 2017-08-25 Updated EU Declaration of Conformity.
+2.1 2018-01-29 “Kvaser Device Guide” has replaced “Kvaser
+Hardware”.
+2.2 2018-05-07 Minor textual changes.
+2.3 2018-08-28 Minor textual changes.
+3.0 2018-10-15 Updated EU Regulatory Compliance.
+3.1 2019-02-11 Minor textual changes.
+3.2 2019-08-09 Url protocol updated.
+3.3 2020-01-27 Added sdoc.
+3.4 2020-05-06 Updated Technical data table with galvanic isolation.
+3.5 2020-08-27 Updated supported OS.
+3.6 2022-04-01 Added Android to Technical data table, minor textual
+changes.
+3.7 2023-02-13 Updated the Technical data table. Added section
+about intended use. Minor textual changes.
+3.8 2024-03-15 Updated Kvaser logo.
+3.9 2025-01-10 Updated EU Declaration of Conformity.
+3.10 2026-08-17 Minor textual changes.
+Kvaser AB, Mölndal, Sweden — www.kvaser.com

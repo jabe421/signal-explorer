@@ -1,0 +1,1372 @@
+#ifndef __IDEVICESETTINGS_H_
+#define __IDEVICESETTINGS_H_
+
+#include <stdint.h>
+#include "icsneo/platform/unaligned.h"
+#include "icsneo/icsneoc2types.h"
+
+#pragma pack(push, 2)
+
+/* SetBaudrate in CAN_SETTINGS */
+enum
+{
+	AUTO,
+	USE_TQ
+};
+
+/* Baudrate in CAN_SETTINGS/CANFD_SETTINGS */
+enum CANBaudrate
+{
+	BPS20,
+	BPS33,
+	BPS50,
+	BPS62,
+	BPS83,
+	BPS100,
+	BPS125,
+	BPS250,
+	BPS500,
+	BPS800,
+	BPS1000,
+	BPS666,
+	BPS2000,
+	BPS4000,
+	CAN_BPS5000,
+	CAN_BPS6667,
+	CAN_BPS8000,
+	CAN_BPS10000,
+};
+
+/* Mode in CAN_SETTINGS */
+enum
+{
+	NORMAL = 0,
+	DISABLE = 1,
+	LOOPBACK = 2,
+	LISTEN_ONLY = 3,
+	LISTEN_ALL = 7
+};
+
+enum AELinkMode
+{
+	AE_LINK_INVALID = icsneoc2_ae_link_mode_invalid,
+	AE_LINK_AUTO = icsneoc2_ae_link_mode_auto,
+	AE_LINK_MASTER = icsneoc2_ae_link_mode_master,
+	AE_LINK_SLAVE = icsneoc2_ae_link_mode_slave
+};
+
+enum EthPhyLinkMode
+{
+	ETH_LINK_MODE_AUTO_NEGOTIATION = icsneoc2_eth_phy_link_mode_auto_negotiation,
+	ETH_LINK_MODE_10MBPS_HALFDUPLEX = icsneoc2_eth_phy_link_mode_10mbps_halfduplex,
+	ETH_LINK_MODE_10MBPS_FULLDUPLEX = icsneoc2_eth_phy_link_mode_10mbps_full_duplex,
+	ETH_LINK_MODE_100MBPS_HALFDUPLEX = icsneoc2_eth_phy_link_mode_100mbps_half_duplex,
+	ETH_LINK_MODE_100MBPS_FULLDUPLEX = icsneoc2_eth_phy_link_mode_100mbps_full_duplex,
+	ETH_LINK_MODE_1GBPS_HALFDUPLEX = icsneoc2_eth_phy_link_mode_1gbps_half_duplex,
+	ETH_LINK_MODE_1GBPS_FULLDUPLEX = icsneoc2_eth_phy_link_mode_1gbps_full_duplex,
+	ETH_LINK_MODE_2_5GBPS_FULLDUPLEX = icsneoc2_eth_phy_link_mode_2_5gbps_full_duplex,
+	ETH_LINK_MODE_5GBPS_FULLDUPLEX = icsneoc2_eth_phy_link_mode_5gbps_full_duplex,
+	ETH_LINK_MODE_10GBPS_FULLDUPLEX = icsneoc2_eth_phy_link_mode_10gbps_full_duplex
+};
+
+typedef struct
+{
+	uint16_t networkId;
+	uint8_t linkStatus;
+	uint8_t linkFullDuplex;
+	uint8_t linkSpeed; // 0=10Mbps, 1=100Mbps, 2=1Gbps, 3=2.5Gbps, 4=5Gbps, 5=10Gbps
+	int8_t linkMode; // for automotive networks - see AELinkMode
+} EthernetNetworkStatus;
+
+typedef struct
+{
+	uint8_t Mode;
+	uint8_t SetBaudrate;
+	uint8_t Baudrate;
+	uint8_t transceiver_mode;
+	uint8_t TqSeg1;
+	uint8_t TqSeg2;
+	uint8_t TqProp;
+	uint8_t TqSync;
+	uint16_t BRP;
+	uint8_t auto_baud;
+	uint8_t innerFrameDelay25us : 4;
+	uint8_t rsvd : 1;
+	uint8_t disableRetransmission : 1;
+	uint8_t canClk : 2;
+} CAN_SETTINGS;
+#define CAN_SETTINGS_SIZE 12
+static_assert(sizeof(CAN_SETTINGS) == CAN_SETTINGS_SIZE, "CAN_SETTINGS is the wrong size!");
+
+/* FDMode in CANFD_SETTINGS */
+enum
+{
+	NO_CANFD,
+	CANFD_ENABLED,
+	CANFD_BRS_ENABLED,
+	CANFD_ENABLED_ISO,
+	CANFD_BRS_ENABLED_ISO
+};
+
+typedef struct _CANFD_SETTINGS
+{
+	uint8_t FDMode; /* mode, secondary baudrate for canfd */
+	uint8_t FDBaudrate;
+	uint8_t FDTqSeg1;
+	uint8_t FDTqSeg2;
+	uint8_t FDTqProp;
+	uint8_t FDTqSync;
+	uint16_t FDBRP;
+	uint8_t FDTDC;
+	uint8_t reserved;
+} CANFD_SETTINGS;
+#define CANFD_SETTINGS_SIZE 10
+
+typedef struct ETHERNET_SETTINGS_t
+{
+	uint8_t duplex; /* 0 = half, 1 = full */
+	uint8_t link_speed;
+	uint8_t auto_neg;
+	uint8_t led_mode;
+	uint8_t rsvd[4];
+} ETHERNET_SETTINGS;
+#define ETHERNET_SETTINGS_SIZE 8
+
+typedef struct AE_GENERAL_SETTINGS_t
+{
+	uint8_t ucInterfaceType;
+	uint8_t reserved0[3];
+	uint16_t tapPair0;
+	uint16_t tapPair1;
+	uint16_t tapPair2;
+	uint16_t tapPair3;
+	uint16_t tapPair4;
+	uint16_t tapPair5;
+	union {
+		struct
+		{
+			unsigned bTapEnSwitch : 1;
+			unsigned bTapEnPtp : 1;
+			unsigned bEnReportLinkQuality : 1;
+		} flags;
+		unsigned uFlags;
+	};
+} AE_GENERAL_SETTINGS;
+#define AE_GENERAL_SETTINGS_SIZE 20
+static_assert(sizeof(AE_GENERAL_SETTINGS) == AE_GENERAL_SETTINGS_SIZE, "AE_GENERAL_SETTINGS is the wrong size!");
+
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4201) // nameless struct/union
+#endif
+typedef struct AE_SETTINGS_t
+{
+	uint8_t ucConfigMode;
+	unsigned char preemption_en;
+	union {
+		struct {
+			// Reuse the mac_addr for switch mode if required!
+			unsigned char mac_addr1[6];// Original Addr for spoofing
+			unsigned char mac_addr2[6];// Target Addr for spoofing
+			unsigned short mac_spoofing_en : 1;
+			unsigned short mac_spoofing_isDstOrSrc : 1;
+			unsigned short link_spd : 2;
+			unsigned short q2112_phy_mode : 1;
+			unsigned short reserved : 11;
+		};
+		unsigned char reserved0[14];
+	};
+} AE_SETTINGS;
+#define AE_SETTINGS_SIZE 16
+static_assert(sizeof(AE_SETTINGS) == AE_SETTINGS_SIZE, "AE_SETTINGS is the wrong size!");
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
+
+typedef struct
+{
+	uint8_t MasterEnable;
+	uint8_t SlaveEnable;
+	uint8_t MasterNetwork;
+	uint8_t SlaveNetwork;
+} TIMESYNC_ICSHARDWARE_SETTINGS;
+#define TIMESYNC_ICSHARDWARE_SETTINGS_SIZE 4
+
+typedef struct DISK_SETTINGS_t
+{
+	uint8_t disk_layout;// RAID0, spanned, etc
+	uint8_t disk_format;// FAT32
+	uint32_t disk_enables;// mask of enabled disks in this layout
+	uint8_t rsvd[8];
+} DISK_SETTINGS;
+#define DISK_SETTINGS_SIZE 14
+
+#define SERDESCAM_SETTINGS_FLAG_ENABLE 0x01
+#define SERDESCAM_SETTINGS_RTSP_ENABLE 0x02
+#define SERDESCAM_SETTINGS_AUTO_DETECT_ENABLE 0x04
+#define SERDESCAM_SETTINGS_CONFIG_ENABLE 0x08
+
+/* mode in SERDESCAM_SETTINGS */
+enum
+{
+	SERDESCAM_MODE_PASSTHROUGH = 0,
+	SERDESCAM_MODE_TAP,
+	SERDESCAM_MODE_PLAYBACK,
+};
+
+/* ucCamConfigMode in SERDESCAM_SETTINGS */
+enum
+{
+	SERDESCAM_CONFIG_MODE_EXTERNAL_OVER_TAP = 0,
+	SERDESCAM_CONFIG_MODE_LOCAL_SCRIPT,
+};
+
+/* bitPos in SERDESCAM_SETTINGS */
+enum
+{
+	SERDESCAM_PIXEL_BIT_POS_0 = 0,
+	SERDESCAM_PIXEL_BIT_POS_1,
+	SERDESCAM_PIXEL_BIT_POS_2,
+	SERDESCAM_PIXEL_BIT_POS_3,
+};
+
+/* videoFormat in SERDESCAM_SETTINGS */
+enum
+{
+	SERDESCAM_VIDEO_FORMAT_NONE = -1,
+	SERDESCAM_VIDEO_FORMAT_UYVY_422_8 = 0, // packed YUV 4:2:2, 16bpp, Cb Y0 Cr Y1
+	SERDESCAM_VIDEO_FORMAT_YUYV_422_8, // packed YUV 4:2:2, 16bpp, Y0 Cb Y1 Cr
+	SERDESCAM_VIDEO_FORMAT_YVYU_422_8, // packed YUV 4:2:2, 16bpp, Y0 Cr Y1 Cb
+	SERDESCAM_VIDEO_FORMAT_VYUY_422_8, // packed YUV 4:2:2, 16bpp, Cr Y0 Cb Y1
+	SERDESCAM_VIDEO_FORMAT_BAYER_BGGR_8,
+	SERDESCAM_VIDEO_FORMAT_RAW_8,  // e.g. bayer 8 bit, gray 8 bit
+	SERDESCAM_VIDEO_FORMAT_RAW_10, // e.g. bayer 10 bit, gray 10 bit
+	SERDESCAM_VIDEO_FORMAT_RAW_12,
+	SERDESCAM_VIDEO_FORMAT_RAW_16, // e.g. planar YUV 4:2:2, 16bpp, 8 bit samples
+	SERDESCAM_VIDEO_FORMAT_RAW_20, // e.g. planar YUV 4:2:2, 20bpp, 10 bit samples
+	SERDESCAM_VIDEO_FORMAT_RAW_24, // e.g. packed RGB 8:8:8 24bpp, 8 bit samples
+	SERDESCAM_VIDEO_FORMAT_RAW_30, // e.g. planar YUV 4:4:4, 30bpp, 10 bit samples
+	SERDESCAM_VIDEO_FORMAT_RAW_32, // e.g. packed ARGB 8:8:8:8, 32bpp, 8 bit samples
+	SERDESCAM_VIDEO_FORMAT_RAW_36,
+	SERDESCAM_VIDEO_FORMAT_RGB888, // packed RGB 8:8:8, 24bpp, RGBRGB...
+	SERDESCAM_VIDEO_FORMAT_UYVY_422_10LE_PACKED,// packed YUV 4:2:2, 20bpp, Cb Y0 Cr Y1, bitpacked
+	SERDESCAM_VIDEO_FORMAT_YUYV_422_10LE_PACKED,// packed YUV 4:2:2, 20bpp, Y0 Cb Y1 Cr, FOURCC Y210 bitpacked
+	SERDESCAM_VIDEO_FORMAT_YVYU_422_10LE_PACKED,// packed YUV 4:2:2, 20bpp, Y0 Cr Y1 Cb, bitpacked
+	SERDESCAM_VIDEO_FORMAT_VYUY_422_10LE_PACKED,// packed YUV 4:2:2, 20bpp, Cr Y0 Cb Y1, bitpacked
+	SERDESCAM_VIDEO_FORMAT_BAYER_BGGR_10LE_PACKED,// 10-bit samples bitpacked into 40-bits little endian
+	SERDESCAM_VIDEO_FORMAT_BAYER_BGGR_12LE_PACKED,// 12-bit samples bitpacked into 40-bits little endian
+	SERDESCAM_VIDEO_FORMAT_BAYER_BGGR_16LE,// 16-bit samples little endian
+	SERDESCAM_VIDEO_FORMAT_BAYER_BGGR_16BE,// 16-bit samples big endian
+	SERDESCAM_VIDEO_FORMAT_JPEG,
+	SERDESCAM_VIDEO_FORMAT_UYVY_422_12LE_PACKED,// packed YUV 4:2:2, 24bpp, Cb Y0 Cr Y1, bitpacked
+	SERDESCAM_VIDEO_FORMAT_YUYV_422_12LE_PACKED,// packed YUV 4:2:2, 24bpp, Y0 Cb Y1 Cr, bitpacked
+	SERDESCAM_VIDEO_FORMAT_YVYU_422_12LE_PACKED,// packed YUV 4:2:2, 24bpp, Y0 Cr Y1 Cb, bitpacked
+	SERDESCAM_VIDEO_FORMAT_VYUY_422_12LE_PACKED,// packed YUV 4:2:2, 24bpp, Cr Y0 Cb Y1, bitpacked
+	SERDESCAM_VIDEO_FORMAT_YUV422_10LE_PLANAR,// planar YUV 4:2:2, 20bpp, (1 Cr & Cb sample per 2x1 Y samples), little-endian
+	SERDESCAM_VIDEO_FORMAT_YUV422_16LE_PLANAR,// planar YUV 4:2:2, 32bpp, (1 Cr & Cb sample per 2x1 Y samples), little-endian
+	SERDESCAM_VIDEO_FORMAT_RGB565, // packed RGB 5:6:5, 16bpp, RGBRGB...
+	SERDESCAM_VIDEO_FORMAT_RGB666, // packed RGB 6:6:6, 18bpp, RGBRGB...
+	SERDESCAM_VIDEO_FORMAT_RAW_11x2,
+	SERDESCAM_VIDEO_FORMAT_RAW_12x2,
+	SERDESCAM_VIDEO_FORMAT_RAW_14,
+	// NOTE: CSI2 formats are only used internal to VSPY
+	// Firmware should flag video as CSI2 source types
+	// Vspy will then convert formats into the proper CSI2 version
+	SERDESCAM_VIDEO_FORMAT_CSI2_UYVY_422_8, // packed YUV 4:2:2, 16bpp, Cb Y0 Cr Y1
+	SERDESCAM_VIDEO_FORMAT_CSI2_YUYV_422_8, // packed YUV 4:2:2, 16bpp, Y0 Cb Y1 Cr
+	SERDESCAM_VIDEO_FORMAT_CSI2_YVYU_422_8, // packed YUV 4:2:2, 16bpp, Y0 Cr Y1 Cb
+	SERDESCAM_VIDEO_FORMAT_CSI2_VYUY_422_8, // packed YUV 4:2:2, 16bpp, Cr Y0 Cb Y1
+	SERDESCAM_VIDEO_FORMAT_CSI2_UYVY_422_10LE_PACKED,// packed YUV 4:2:2, 20bpp, Cb Y0 Cr Y1, bitpacked
+	SERDESCAM_VIDEO_FORMAT_CSI2_YUYV_422_10LE_PACKED,// packed YUV 4:2:2, 20bpp, Y0 Cb Y1 Cr, FOURCC Y210 bitpacked
+	SERDESCAM_VIDEO_FORMAT_CSI2_YVYU_422_10LE_PACKED,// packed YUV 4:2:2, 20bpp, Y0 Cr Y1 Cb, bitpacked
+	SERDESCAM_VIDEO_FORMAT_CSI2_VYUY_422_10LE_PACKED,// packed YUV 4:2:2, 20bpp, Cr Y0 Cb Y1, bitpacked
+	SERDESCAM_VIDEO_FORMAT_CSI2_UYVY_422_12LE_PACKED,// packed YUV 4:2:2, 24bpp, Cb Y0 Cr Y1, bitpacked
+	SERDESCAM_VIDEO_FORMAT_CSI2_YUYV_422_12LE_PACKED,// packed YUV 4:2:2, 24bpp, Y0 Cb Y1 Cr, bitpacked
+	SERDESCAM_VIDEO_FORMAT_CSI2_YVYU_422_12LE_PACKED,// packed YUV 4:2:2, 24bpp, Y0 Cr Y1 Cb, bitpacked
+	SERDESCAM_VIDEO_FORMAT_CSI2_VYUY_422_12LE_PACKED,// packed YUV 4:2:2, 24bpp, Cr Y0 Cb Y1, bitpacked
+	SERDESCAM_VIDEO_FORMAT_CSI2_RGB565, // packed RGB 5:6:5, 16bpp, BGRBGR...
+	SERDESCAM_VIDEO_FORMAT_CSI2_RGB666, // packed RGB 6:6:6, 18bpp, BGRBGR...
+	SERDESCAM_VIDEO_FORMAT_CSI2_RGB888, // packed RGB 8:8:8, 24bpp, BGRBGR...
+	SERDESCAM_VIDEO_FORMAT_CSI2_BAYER_BGGR_8,
+	SERDESCAM_VIDEO_FORMAT_CSI2_BAYER_BGGR_10LE_PACKED,// 10-bit samples bitpacked into 40-bits little endian
+	SERDESCAM_VIDEO_FORMAT_CSI2_BAYER_BGGR_12LE_PACKED,// 12-bit samples bitpacked into 40-bits little endian
+	SERDESCAM_VIDEO_FORMAT_CSI2_RAW_8,  // e.g. bayer 8 bit, gray 8 bit
+	SERDESCAM_VIDEO_FORMAT_CSI2_RAW_10, // e.g. bayer 10 bit, gray 10 bit
+	SERDESCAM_VIDEO_FORMAT_CSI2_RAW_11x2,
+	SERDESCAM_VIDEO_FORMAT_CSI2_RAW_12,
+	SERDESCAM_VIDEO_FORMAT_CSI2_RAW_12x2,
+	SERDESCAM_VIDEO_FORMAT_CSI2_RAW_14,
+	SERDESCAM_VIDEO_FORMAT_CSI2_RAW_16, // e.g. planar YUV 4:2:2, 16bpp, 8 bit samples
+	SERDESCAM_VIDEO_FORMAT_CSI2_RAW_20, // e.g. planar YUV 4:2:2, 20bpp, 10 bit samples
+	SERDESCAM_VIDEO_FORMAT_CSI2_RAW_24, // e.g. packed RGB 8:8:8 24bpp, 8 bit samples
+	SERDESCAM_VIDEO_FORMAT_CSI2_RAW_30, // e.g. planar YUV 4:4:4, 30bpp, 10 bit samples
+	SERDESCAM_VIDEO_FORMAT_CSI2_RAW_32, // e.g. packed ARGB 8:8:8:8, 32bpp, 8 bit samples
+	SERDESCAM_VIDEO_FORMAT_CSI2_RAW_36,
+	// NOTE: new entries must be appended to maintain backwards compatibility
+	// insert new entries before this
+	SERDESCAM_VIDEO_FORMAT_COUNT,
+};
+
+typedef struct SERDESCAM_SETTINGS_t
+{
+	/* bit0: enable
+	 * bit1: RTSP stream enable
+	 * bit2: auto detect resolution
+	 */
+	uint32_t flags;
+	uint8_t mode;// passthrough, tap, etc
+	uint8_t rsvd1;
+	uint8_t bitPos;
+	uint8_t videoFormat;// bytes per pixel
+	uint16_t resWidth;
+	uint16_t resHeight;
+	uint8_t frameSkip;// skip every nth frame
+	uint8_t rsvd2[19];
+} SERDESCAM_SETTINGS;
+#define SERDESCAM_SETTINGS_SIZE 32
+
+#define SERDESPOC_SETTINGS_MODE_DISABLED 0x00
+#define SERDESPOC_SETTINGS_MODE_SUPPLY 0x01
+#define SERDESPOC_SETTINGS_MODE_SERIALIZER 0x02
+
+typedef struct SERDESPOC_SETTINGS_t
+{
+	uint8_t mode;// no poc, generated supply, serializer passthrough
+	uint8_t rsvd[6];
+	uint8_t voltage;// generated voltage
+	uint16_t chksum;// checksum to protect settings structure (don't want corrupt voltage settings)
+} SERDESPOC_SETTINGS;
+#define SERDESPOC_SETTINGS_SIZE 10
+
+enum
+{
+	SERDESGEN_MOD_ID_NONE = 0,
+	SERDESGEN_MOD_ID_FPD3_2x2 = 1,
+	SERDESGEN_MOD_ID_GMSL2_2x2 = 2,
+	SERDESGEN_MOD_ID_GMSL1_4x4 = 3,
+	SERDESGEN_MOD_ID_FPD3_TO_GMSL2_2x2 = 4,
+	// new modules go above this line
+	SERDESGEN_MOD_ID_UNKNOWN = -1,
+};
+
+#define SERDESGEN_SETTINGS_FLAG_TX_PATGEN_ENABLE 0x0001
+
+typedef struct SERDESGEN_SETTINGS_t
+{
+	/* 
+	 * bit0: enable pattern generator
+	 */
+	uint16_t flags;
+	uint8_t rsvd1;
+	uint8_t mod_id; // connected module passed back from device
+	uint16_t tx_speed; // Mbps per lane, all tx ports
+	uint16_t rx_speed; // Mbps per lane, all rx ports
+	// reserved space for the future
+	// maybe pattern generator settings
+	uint8_t rsvd2[24];
+} SERDESGEN_SETTINGS;
+#define SERDESGEN_SETTINGS_SIZE 32
+
+#define ETHERNET_SETTINGS2_FLAG_FULL_DUPLEX  0x01
+#define ETHERNET_SETTINGS2_FLAG_AUTO_NEG     0x02
+#define ETHERNET_SETTINGS2_FLAG_TCPIP_ENABLE 0x04
+#define ETHERNET_SETTINGS2_FLAG_RTSP_ENABLE  0x08
+#define ETHERNET_SETTINGS2_FLAG_DEVICE_HOSTING_ENABLE  0x10
+#define ETHERNET_SETTINGS2_FLAG_COMM_IN_USE  0x80
+
+// ETHERNET_SETTINGS2 flags2 bit definitions
+#define ETHERNET_SETTINGS2_FLAGS2_LINK_MODE_SLAVE  0x01  // bit0: 0=master, 1=slave
+#define ETHERNET_SETTINGS2_FLAGS2_PHY_MODE_LEGACY  0x02  // bit1: 0=IEEE, 1=legacy
+#define ETHERNET_SETTINGS2_FLAGS2_LINK_MODE_AUTO   0x04  // bit2: auto master/slave negotiation
+
+typedef struct ETHERNET_SETTINGS2_t
+{
+	/* bit0: 0=half duplex, 1=full duplex
+	 * bit1: auto negot
+	 * bit2: enable tcp/ip stack
+	 * bit3: enable rtsp server
+	 * bit4: enable intepid device hosting (go online and log other devices)
+	 */
+	uint8_t flags;
+	uint8_t link_speed;//0=10, 1=100, 2=1000
+	uint32_t ip_addr;
+	uint32_t netmask;
+	uint32_t gateway;
+	/* FLAGS2
+	 * bit0: link mode - 0=master, 1=slave
+	 * bit1: PHY mode - 0=IEEE, 1=legacy
+	 * bit2: auto master/slave
+	 */
+	uint8_t flags2;
+	uint8_t rsvd;
+} ETHERNET_SETTINGS2;
+#define ETHERNET_SETTINGS2_SIZE 16
+
+typedef struct ETHERNET10T1S_SETTINGS_t
+{
+	uint8_t max_burst_count;
+	uint8_t burst_timer;
+	uint8_t max_num_nodes;
+	uint8_t local_id;
+	uint8_t to_timer;
+	uint8_t flags;
+	uint8_t local_id_alternate;
+	uint8_t rsvd[5];
+} ETHERNET10T1S_SETTINGS;
+#define ETHERNET10T1S_SETTINGS_SIZE 12
+
+#define ETHERNET10T1S_SETTINGS_FLAG_ENABLE_PLCA 0x01
+#define ETHERNET10T1S_SETTINGS_FLAG_TERMINATION 0x02
+#define ETHERNET10T1S_SETTINGS_FLAG_BUS_DECODING_BEACONS 0x04
+#define ETHERNET10T1S_SETTINGS_FLAG_BUS_DECODING_ALL 0x08
+
+typedef struct ETHERNET10T1S_SETTINGS_EXT_t
+{
+	uint8_t enable_multi_id; // Mask representing whether ID at corresponding bit enabled or not
+	uint8_t multi_id[7];
+	uint8_t rsvd[8];
+} ETHERNET10T1S_SETTINGS_EXT;
+#define ETHERNET10T1S_SETTINGS_EXT_SIZE 16
+
+typedef struct ETHERNET10T1L_SETTINGS_t
+{
+	uint8_t tx_mode;
+	uint8_t rsvd[7];
+} ETHERNET10T1L_SETTINGS;
+#define ETHERNET10T1L_SETTINGS_SIZE 8
+
+
+#define ETHERNET_SETTINGS10G_FLAG_FULL_DUPLEX  0x01
+#define ETHERNET_SETTINGS10G_FLAG_AUTO_NEG     0x02
+#define ETHERNET_SETTINGS10G_FLAG_TCPIP_ENABLE 0x04
+#define ETHERNET_SETTINGS10G_FLAG_RTSP_ENABLE  0x08
+#define ETHERNET_SETTINGS10G_FLAG_DEVICE_HOSTING_ENABLE  0x10
+#define ETHERNET_SETTINGS10G_FLAG_COMM_IN_USE  0x80000000
+
+typedef struct ETHERNET10G_SETTINGS_t
+{
+	/* bit0: 0=half duplex, 1=full duplex
+	 * bit1: auto negot
+	 * bit2: enable tcp/ip stack
+	 * bit3: enable rtsp server
+	 * bit4: enable intepid device hosting (go online and log other devices)
+	 * bit31: comm in use
+	 */
+	uint32_t flags;
+	uint32_t ip_addr;
+	uint32_t netmask;
+	uint32_t gateway;
+	uint8_t link_speed;//0=10, 1=100, 2=1000, 3=2500, 4=5000, 5=10000
+	uint8_t rsvd2[7];
+} ETHERNET10G_SETTINGS;
+#define ETHERNET10G_SETTINGS_SIZE 24
+
+typedef struct LOGGER_SETTINGS_t
+{
+	/* bit6-0: timeout in seconds
+	 * bit7: 1=disable coremini/logging during extraction for timeout
+	 */
+	uint8_t extraction_timeout;
+	uint8_t rsvd[3];
+} LOGGER_SETTINGS;
+#define LOGGER_SETTINGS_SIZE 4
+
+#define RAD_GPTP_NUM_PORTS 1 // 1 because only supported as gPTP endpoint
+typedef struct RAD_GPTP_SETTINGS_t
+{
+	uint32_t neighborPropDelayThresh; //ns
+	uint32_t sys_phc_sync_interval; //ns
+	int8_t logPDelayReqInterval; // log2ms
+	int8_t logSyncInterval; // log2ms
+	int8_t logAnnounceInterval; // log2ms
+	uint8_t profile;
+	uint8_t priority1;
+	uint8_t clockclass;
+	uint8_t clockaccuracy;
+	uint8_t priority2;
+	uint16_t offset_scaled_log_variance;
+	uint8_t gptpPortRole;
+	uint8_t gptpEnabledPort;
+	uint8_t enableClockSyntonization;
+	uint8_t rsvd[15];
+} RAD_GPTP_SETTINGS;//36 Bytes with RAD_GPTP_NUM_PORTS = 1
+#define RAD_GPTP_SETTINGS_SIZE 36
+
+#define RAD_REPORTING_SETTINGS_FLAG_TEMP_ENABLE 		0x00000001
+#define RAD_REPORTING_SETTINGS_FLAG_MIC2_GPS_ENABLE 	0x00000002 // USB port 1
+#define RAD_REPORTING_SETTINGS_FLAG_INT_GPS_ENABLE 		0x00000004
+#define RAD_REPORTING_SETTINGS_FLAG_MIC2_GPS_ENABLE2 	0x00000008 // USB port 2
+#define RAD_REPORTING_SETTINGS_FLAG_MISC1_DIN 			0x00000010
+#define RAD_REPORTING_SETTINGS_FLAG_MISC2_DIN 			0x00000020
+#define RAD_REPORTING_SETTINGS_FLAG_MISC1_PWMIN 		0x00000040
+#define RAD_REPORTING_SETTINGS_FLAG_MISC2_PWMIN 		0x00000080
+#define RAD_REPORTING_SETTINGS_FLAG_AIN1 				0x00000100
+#define RAD_REPORTING_SETTINGS_FLAG_AIN2 				0x00000200
+
+typedef struct RAD_REPORTING_SETTINGS_t
+{
+	uint32_t flags;
+	uint16_t temp_interval_ms;
+	uint16_t gps_interval_ms;
+	uint16_t serdes_interval_ms;
+	uint16_t io_interval_ms;
+	uint8_t rsvd[4];
+} RAD_REPORTING_SETTINGS;
+#define RAD_REPORTING_SETTINGS_SIZE 16
+
+typedef struct _STextAPISettings
+{
+	uint32_t can1_tx_id;
+	uint32_t can1_rx_id;
+	union {
+		struct sCAN1Options
+		{
+			unsigned bExtended : 1;
+			unsigned : 15;
+		};
+		uint32_t DWord;
+	} can1_options;
+	uint32_t can2_tx_id;
+	uint32_t can2_rx_id;
+	union {
+		struct sCAN2Options
+		{
+			unsigned bExtended : 1;
+			unsigned : 15;
+		};
+		uint32_t DWord;
+	} can2_options;
+
+	uint32_t network_enables;
+
+	uint32_t can3_tx_id;
+	uint32_t can3_rx_id;
+	union {
+		struct sCAN3Options
+		{
+			unsigned bExtended : 1;
+			unsigned : 15;
+		};
+		uint32_t DWord;
+	} can3_options;
+
+	uint32_t can4_tx_id;
+	uint32_t can4_rx_id;
+	union {
+		struct sCAN4Options
+		{
+			unsigned bExtended : 1;
+			unsigned : 15;
+		};
+		uint32_t DWord;
+	} can4_options;
+
+	uint32_t reserved[5];
+
+} STextAPISettings;
+#define STextAPISettings_SIZE 72
+
+/* high_speed_auto_switch in SWCAN_SETTINGS */
+enum
+{
+	SWCAN_AUTOSWITCH_DISABLED,
+	SWCAN_AUTOSWITCH_NO_RESISTOR,
+	SWCAN_AUTOSWITCH_WITH_RESISTOR,
+	SWCAN_AUTOSWITCH_DISABLED_RESISTOR_ENABLED
+};
+
+typedef struct
+{
+	uint8_t Mode;
+	uint8_t SetBaudrate;
+	uint8_t Baudrate;
+	uint8_t transceiver_mode;
+	uint8_t TqSeg1;
+	uint8_t TqSeg2;
+	uint8_t TqProp;
+	uint8_t TqSync;
+	uint16_t BRP;
+	uint16_t high_speed_auto_switch;
+	uint8_t auto_baud;
+	uint8_t RESERVED;
+} SWCAN_SETTINGS;
+#define SWCAN_SETTINGS_SIZE 14
+
+/* Baudrate in LIN_SETTINGS / ISO9141_KEYWORD2000_SETTINGS / UART_SETTINGS */
+enum
+{
+	BPS5000,
+	BPS10400,
+	BPS33333,
+	BPS50000,
+	BPS62500,
+	BPS71429,
+	BPS83333,
+	BPS100000,
+	BPS117647
+};
+
+/* CommanderResistor in LIN_SETTINGS */
+enum : uint8_t
+{
+	RESISTOR_ON,
+	RESISTOR_OFF
+};
+
+enum RADGPTPProfile : icsneoc2_gptp_profile_t {
+	RAD_GPTP_PROFILE_STANDARD   = icsneoc2_gptp_profile_standard,
+	RAD_GPTP_PROFILE_AUTOMOTIVE = icsneoc2_gptp_profile_automotive,
+};
+
+enum RADGPTPRole : icsneoc2_gptp_role_t {
+	RAD_GPTP_ROLE_DISABLED = icsneoc2_gptp_role_disabled,
+	RAD_GPTP_ROLE_PASSIVE  = icsneoc2_gptp_role_passive,
+	RAD_GPTP_ROLE_MASTER   = icsneoc2_gptp_role_master,
+	RAD_GPTP_ROLE_SLAVE    = icsneoc2_gptp_role_slave,
+};
+
+/* Mode in LIN_SETTINGS */
+enum LINMode
+{
+	SLEEP_MODE = icsneoc2_lin_mode_sleep,
+	SLOW_MODE = icsneoc2_lin_mode_slow,
+	NORMAL_MODE = icsneoc2_lin_mode_normal,
+	FAST_MODE = icsneoc2_lin_mode_fast
+};
+
+typedef struct _LIN_SETTINGS
+{
+	uint32_t Baudrate; /* New products since FIREVNETEP should rely on this only */
+	uint16_t spbrg; /* Precompiled to be 40Mhz/Baudrate/16 - 1.  Only used in neoVI FIRE/FIREVNET(4dw) */
+	uint8_t brgh; /* Must be zero */
+	uint8_t numBitsDelay;
+	uint8_t CommanderResistor;
+	uint8_t Mode;
+} LIN_SETTINGS;
+#define LIN_SETTINGS_SIZE 10
+
+typedef struct
+{
+	uint16_t time_500us;
+	uint16_t k;
+	uint16_t l;
+} ISO9141_KEYWORD2000__INIT_STEP;
+#define ISO9141_KEYWORD2000__INIT_STEP_SIZE 6
+
+typedef struct
+{
+	uint32_t Baudrate;
+	uint16_t spbrg;
+	uint16_t brgh;
+	ISO9141_KEYWORD2000__INIT_STEP init_steps[16];
+	uint8_t init_step_count;
+	uint16_t p2_500us;
+	uint16_t p3_500us;
+	uint16_t p4_500us;
+	uint16_t chksum_enabled;
+} ISO9141_KEYWORD2000_SETTINGS;
+#define ISO9141_KEYWORD2000_SETTINGS_SIZE 114
+static_assert(sizeof(ISO9141_KEYWORD2000_SETTINGS) == ISO9141_KEYWORD2000_SETTINGS_SIZE, "ISO9141_KEYWORD2000_SETTINGS is the wrong size!");
+
+typedef struct _UART_SETTINGS
+{
+	uint16_t Baudrate;
+	uint16_t spbrg;
+	uint16_t brgh;
+	uint16_t parity;
+	uint16_t stop_bits;
+	uint8_t flow_control; /* 0- off, 1 - Simple CTS RTS */
+	uint8_t reserved_1;
+	union {
+		uint32_t bOptions;
+		struct {
+			uint32_t invert_tx : 1;
+			uint32_t invert_rx : 1;
+			uint32_t half_duplex : 1;
+			uint32_t reserved_bits : 13;
+			uint32_t reserved_bits2 : 16;
+		} sOptions;
+	};
+} UART_SETTINGS;
+#define UART_SETTINGS_SIZE 16
+static_assert(sizeof(UART_SETTINGS) == UART_SETTINGS_SIZE, "UART_SETTINGS is the wrong size!");
+
+typedef struct {
+	uint8_t ethernetActivationLineEnabled;
+	EthernetNetworkStatus ethernetStatus;
+	uint8_t unused;
+} fire2vnet_status_t, flexray_vnetz_status_t;
+
+typedef struct
+{
+	uint8_t allowBoot; // 0 - disable booting Linux, 1 - enable booting Linux, Others - Disable booting linux
+	uint8_t useExternalWifiAntenna; // 0 for internal, 1 for external, Others - Internal
+	uint8_t
+		ethConfigurationPort; // 0 - both ports used by logger, 1 - ETH 01 for Linux Configuration, 2 - ETH 02 for Linux Configuration, Others - both ports used by logger. See defines above
+	uint8_t reserved[5];
+} Fire3LinuxSettings;
+#define FIRE3LINUXSETTINGS_SIZE 8
+static_assert(sizeof(Fire3LinuxSettings) == FIRE3LINUXSETTINGS_SIZE, "Fire3LinuxSettings is the wrong size!");
+
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4201) // nameless struct/union
+#endif
+
+/* Define number of CMP streams per device*/
+#define CMP_STREAMS_FIRE3 (10)
+#define CMP_STREAMS_FIRE3FR (10)
+#define CMP_STREAMS_FIRE3T1SLIN (10)
+#define CMP_STREAMS_RED2 (10)
+#define CMP_STREAMS_A2B (3)
+#define CMP_STREAMS_GIGASTAR (10)
+
+/* CMP Network Enables */
+typedef struct
+{
+	uint8_t bStreamEnabled : 1;
+	uint8_t EthModule : 2;
+	uint8_t bControlEnabled : 1;
+	uint8_t spare : 4;
+	uint8_t streamId;
+	uint8_t dstMac[6];
+	union
+	{
+		uint64_t word;
+		struct
+		{
+			uint16_t network_enables;
+			uint16_t network_enables_2;
+			uint16_t network_enables_3;
+			uint16_t network_enables_4;
+		};
+	} network_enables;
+	uint64_t network_enables_2;
+} CMP_NETWORK_DATA;
+
+/* Global CMP Data */
+typedef struct
+{
+	uint8_t cmp_enabled : 1;
+	uint8_t sparebits : 7;
+	uint8_t spare;
+	uint16_t cmp_device_id;
+} CMP_GLOBAL_DATA;
+
+/* wBMS Structs */
+
+typedef union
+{
+	uint8_t byte;
+	struct
+	{
+		uint8_t onboard_external : 1;
+		uint8_t type : 1;
+		uint8_t mode: 3;
+		uint8_t reserved : 3;
+	} config;
+} sSPI_PORT_SETTING;
+
+typedef struct
+{
+	sSPI_PORT_SETTING port_a; //1
+	sSPI_PORT_SETTING port_b; //1
+} sSPI_PORT_SETTINGS;
+
+#define WBMS_GATEWAY_NETWORK_NONE			(0)
+#define WBMS_GATEWAY_NETWORK_DWCAN_01		(1)
+#define WBMS_GATEWAY_NETWORK_DWCAN_02		(2)
+#define WBMS_GATEWAY_NETWORK_UDP_MULTICAST	(3)
+
+typedef struct
+{
+	uint8_t wbms1_network;
+	uint8_t wbms1_canfd_enable;
+	uint8_t wbms2_network;
+	uint8_t wbms2_canfd_enable;
+	uint16_t reserved[6];
+} WBMSGatewaySettings;
+
+typedef struct
+{
+	uint8_t wBMSDeviceID;
+	uint8_t enabled;
+} sWIL_FAULT_SERVICING_SETTINGS;
+
+typedef struct
+{
+	uint8_t enabled;
+} sWIL_NETWORK_DATA_CAPTURE_SETTINGS;
+
+typedef struct
+{
+	uint8_t using_port_a;
+	uint8_t using_port_b;
+	uint8_t attemptConnect;
+	sWIL_FAULT_SERVICING_SETTINGS fault_servicing_config;
+	sWIL_NETWORK_DATA_CAPTURE_SETTINGS network_data_capture_config;
+	uint16_t sensor_buffer_size;
+} sWIL_CONNECTION_SETTINGS;
+
+#pragma pack(pop)
+
+#ifdef __cplusplus
+#include "icsneo/communication/network.h"
+#include "icsneo/api/event.h"
+#include "icsneo/api/eventmanager.h"
+#include <optional>
+#include <iostream>
+#include <atomic>
+
+namespace icsneo {
+
+class Device;
+
+enum class MiscIOAnalogVoltage : uint8_t
+{
+	V0 = icsneoc2_misc_io_analog_voltage_v0,
+	V1 = icsneoc2_misc_io_analog_voltage_v1,
+	V2 = icsneoc2_misc_io_analog_voltage_v2,
+	V3 = icsneoc2_misc_io_analog_voltage_v3,
+	V4 = icsneoc2_misc_io_analog_voltage_v4,
+	V5 = icsneoc2_misc_io_analog_voltage_v5
+};
+
+// Selects which Ethernet port(s) are reserved for the Linux configuration interface.
+enum class LinuxConfigurationPort : icsneoc2_linux_configuration_port_t
+{
+	USB = icsneoc2_linux_configuration_port_usb,    // Linux configuration interface accessed over USB (default)
+	ETH01 = icsneoc2_linux_configuration_port_eth01 // ETH 01 reserved for Linux configuration
+};
+
+class IDeviceSettings {
+public:
+	using TerminationGroup = std::vector<Network>;
+
+	static constexpr uint16_t GS_VERSION = 5;
+	static std::optional<uint16_t> CalculateGSChecksum(const std::vector<uint8_t>& settings);
+	static CANBaudrate GetEnumValueForBaudrate(int64_t baudrate);
+	static int64_t GetBaudrateValueForEnum(CANBaudrate enumValue);
+	static bool ValidateLINBaudrate(int64_t baudrate);
+
+	IDeviceSettings(Device* device, size_t size);
+	virtual ~IDeviceSettings() {}
+	bool ok() const { return !disabled && settingsLoaded; }
+
+	virtual bool refresh(); // Get from device
+
+	// Send to device, if temporary device keeps settings in volatile RAM until power cycle, otherwise saved to EEPROM
+	virtual bool apply(bool temporary = false);
+	bool applyDefaults(bool temporary = false);
+
+	virtual int64_t getBaudrateFor(Network net) const;
+	virtual bool setBaudrateFor(Network net, int64_t baudrate);
+
+	virtual int64_t getFDBaudrateFor(Network net) const;
+	virtual bool setFDBaudrateFor(Network net, int64_t baudrate);
+
+	virtual const CAN_SETTINGS* getCANSettingsFor(Network net) const { (void)net; return nullptr; }
+	CAN_SETTINGS* getMutableCANSettingsFor(Network net) {
+		if(disabled || readonly)
+			return nullptr;
+		const uint8_t* offset = (const uint8_t*)getCANSettingsFor(net);
+		if(offset == nullptr)
+			return nullptr;
+		return reinterpret_cast<CAN_SETTINGS*>((void*)(settings.data() + (offset - settingsInDeviceRAM.data())));
+	}
+
+	virtual const CANFD_SETTINGS* getCANFDSettingsFor(Network net) const { (void)net; return nullptr; }
+	CANFD_SETTINGS* getMutableCANFDSettingsFor(Network net) {
+		if(disabled || readonly)
+			return nullptr;
+		const uint8_t* offset = (const uint8_t*)getCANFDSettingsFor(net);
+		if(offset == nullptr)
+			return nullptr;
+		return reinterpret_cast<CANFD_SETTINGS*>((void*)(settings.data() + (offset - settingsInDeviceRAM.data())));
+	}
+
+	virtual const CAN_SETTINGS* getLSFTCANSettingsFor(Network net) const { (void)net; return nullptr; }
+	CAN_SETTINGS* getMutableLSFTCANSettingsFor(Network net) {
+		if(disabled || readonly)
+			return nullptr;
+		const uint8_t* offset = (const uint8_t*)getLSFTCANSettingsFor(net);
+		if(offset == nullptr)
+			return nullptr;
+		return reinterpret_cast<CAN_SETTINGS*>((void*)(settings.data() + (offset - settingsInDeviceRAM.data())));
+	}
+
+	virtual const SWCAN_SETTINGS* getSWCANSettingsFor(Network net) const { (void)net; return nullptr; }
+	SWCAN_SETTINGS* getMutableSWCANSettingsFor(Network net) {
+		if(disabled || readonly)
+			return nullptr;
+		const uint8_t* offset = (const uint8_t*)getSWCANSettingsFor(net);
+		if(offset == nullptr)
+			return nullptr;
+		return reinterpret_cast<SWCAN_SETTINGS*>((void*)(settings.data() + (offset - settingsInDeviceRAM.data())));
+	}
+
+	virtual const LIN_SETTINGS* getLINSettingsFor(Network net) const { (void)net; return nullptr; }
+	LIN_SETTINGS* getMutableLINSettingsFor(Network net) {
+		if(disabled || readonly)
+			return nullptr;
+		const uint8_t* offset = (const uint8_t*)getLINSettingsFor(net);
+		if(offset == nullptr)
+			return nullptr;
+		return reinterpret_cast<LIN_SETTINGS*>((void*)(settings.data() + (offset - settingsInDeviceRAM.data())));
+	}
+
+	virtual const ETHERNET_SETTINGS2* getEthernetSettingsFor(Network net) const { (void)net; return nullptr; }
+	ETHERNET_SETTINGS2* getMutableEthernetSettingsFor(Network net) {
+		if(disabled || readonly)
+			return nullptr;
+		const uint8_t* offset = (const uint8_t*)getEthernetSettingsFor(net);
+		if(offset == nullptr)
+			return nullptr;
+		return reinterpret_cast<ETHERNET_SETTINGS2*>((void*)(settings.data() + (offset - settingsInDeviceRAM.data())));
+	}
+
+	virtual const AE_SETTINGS* getAESettingsFor(Network net) const { (void)net; return nullptr; }
+	AE_SETTINGS* getMutableAESettingsFor(Network net) {
+		if(disabled || readonly)
+			return nullptr;
+		const uint8_t* offset = (const uint8_t*)getAESettingsFor(net);
+		if(offset == nullptr)
+			return nullptr;
+		return reinterpret_cast<AE_SETTINGS*>((void*)(settings.data() + (offset - settingsInDeviceRAM.data())));
+	}
+
+	/**
+	 * Some devices have groupings of networks, where software
+	 * switchable termination can only be applied to one network
+	 * in the group at a time. This function returns those groups
+	 * for the given device.
+	 *
+	 * If a device does not support CAN Termination, an empty vector
+	 * is returned.
+	 */
+	virtual std::vector<TerminationGroup> getTerminationGroups() const { return {}; }
+
+	/**
+	 * Check whether software switchable termination is supported
+	 * for a given network on this device.
+	 *
+	 * This does not check whether another network in the termination
+	 * group has termination enabled, check canTerminationBeEnabledFor
+	 * for that.
+	 */
+	bool isTerminationSupportedFor(Network net) const;
+
+	/**
+	 * Check whether software switchable termination can currently
+	 * be enabled for a given network. If another network in the
+	 * group is already enabled, or if termination is not supported
+	 * on this network, false is returned and an error will have
+	 * been reported in icsneo::getLastError().
+	 */
+	bool canTerminationBeEnabledFor(Network net) const;
+
+	/**
+	 * Check whether software switchable termination is currently
+	 * enabled for a given network in the currently active device settings.
+	 *
+	 * Note that if the termination status is set, but not yet
+	 * applied to the device, the current device status will be
+	 * reflected here rather than the pending status.
+	 */
+	std::optional<bool> isTerminationEnabledFor(Network net) const;
+
+	/**
+	 * Enable or disable software switchable termination for a
+	 * given network.
+	 *
+	 * All other networks in the termination group must be disabled
+	 * prior to the call, but the change does not need to be applied
+	 * to the device before enqueing the enable.
+	 *
+	 * Returns true if the call was successful, otherwise an error
+	 * will have been reported in icsneo::getLastError().
+	 */
+	bool setTerminationFor(Network net, bool enabled);
+
+	/**
+	 * Check whether software switchable commander resistor is currently
+	 * enabled for a given network in the currently active device settings.
+	 *
+	 * Returns true if the call was successful, otherwise an error
+	 * will have been reported in icsneo::getLastError().
+	 */
+	std::optional<bool> isCommanderResistorEnabledFor(Network net) const;
+
+	/**
+	 * Enable or disable software switchable commander resistor for a given
+	 * network.
+	 *
+	 * Returns true if the call was successful, otherwise an error
+	 * will have been reported in icsneo::getLastError().
+	 */
+	bool setCommanderResistorFor(Network net, bool resistor_on);
+
+	/**
+	 * Get LIN mode for a given network in the currently active device
+	 * settings.
+	 */
+	std::optional<enum LINMode> getLINModeFor(Network net) const;
+
+	/**
+	 * Set LIN mode for a given network.
+	 *
+	 * Returns true if the call was successful, otherwise an error
+	 * will have been reported in icsneo::getLastError().
+	 */
+	bool setLINModeFor(Network net, enum LINMode mode);
+
+	/**
+	 * Get number of bit delays between commander ID and first responder byte for
+	 * a given network in the currently active device settings.
+	 */
+	std::optional<uint8_t> getLINCommanderResponseTimeFor(Network net) const;
+
+	/**
+	 * Set number of bit delays between commander ID and first responder byte for
+	 * a given network
+	 *
+	 * Returns true if the call was successful, otherwise an error
+	 * will have been reported in icsneo::getLastError().
+	 */
+	bool setLINCommanderResponseTimeFor(Network net, uint8_t bits);
+
+	/**
+	 * Set PHY role (Master/Slave/Auto) for switch devices (Epsilon/XL, Jupiter, etc) using port index.
+	 * For all other devices, use setPhyRoleFor() instead.
+	 * 
+	 * @param index Port index (0-based)
+	 * @param mode Master/Slave/Auto role
+	 * @return true if successful
+	 */
+	virtual bool setPhyMode(uint8_t index, AELinkMode mode) {
+		(void)index, (void)mode;
+		return false;
+	}
+
+	/**
+	 * Enable/disable PHY for switch devices (Epsilon/XL, Jupiter, etc) using port index.
+	 * For all other devices, use setPhyEnableFor() instead.
+	 * 
+	 * @param index Port index (0-based)
+	 * @param enable True to enable, false to disable
+	 * @return true if successful
+	 */
+	virtual bool setPhyEnable(uint8_t index, bool enable) {
+		(void)index, (void)enable;
+		return false;
+	}
+
+	/**
+	 * Set PHY link mode (speed and duplex) for switch devices (Epsilon/XL, Jupiter, etc) using port index.
+	 * For all other devices, use setPhyLinkModeFor() instead.
+	 * 
+	 * @param index Port index (0-based)
+	 * @param mode Link mode (speed + duplex combination)
+	 * @return true if successful
+	 */
+	virtual bool setPhySpeed(uint8_t index, EthPhyLinkMode mode) {
+		(void)index, (void)mode;
+		return false;
+	}
+
+	/**
+	 * Get PHY role (Master/Slave/Auto) for switch devices (Epsilon/XL, Jupiter, etc) using port index.
+	 * For all other devices, use getPhyRoleFor() instead.
+	 * 
+	 * @param index Port index (0-based)
+	 * @return Current role, or nullopt if not available
+	 */
+	virtual std::optional<AELinkMode> getPhyMode(uint8_t index) {
+		(void)index;
+		report(APIEvent::Type::SettingNotAvaiableDevice, APIEvent::Severity::EventWarning);
+		return std::nullopt;
+	}
+
+	/**
+	 * Get PHY enable state for switch devices (Epsilon/XL, Jupiter, etc) using port index.
+	 * For all other devices, use getPhyEnableFor() instead.
+	 * 
+	 * @param index Port index (0-based)
+	 * @return True if enabled, false if disabled, nullopt if not available
+	 */
+	virtual std::optional<bool> getPhyEnable(uint8_t index) {
+		(void)index;
+		report(APIEvent::Type::SettingNotAvaiableDevice, APIEvent::Severity::EventWarning);
+		return std::nullopt;
+	}
+
+	/**
+	 * Get PHY link mode (speed and duplex) for switch devices (Epsilon/XL, Jupiter, etc) using port index.
+	 * For all other devices, use getPhyLinkModeFor() instead.
+	 * 
+	 * @param index Port index (0-based)
+	 * @return Current link mode, or nullopt if not available
+	 */
+	virtual std::optional<EthPhyLinkMode> getPhySpeed(uint8_t index) {
+		(void)index;
+		report(APIEvent::Type::SettingNotAvaiableDevice, APIEvent::Severity::EventWarning);
+		return std::nullopt;
+	}
+
+	/**
+	 * Set PHY role (Master/Slave/Auto) for network-based devices.
+	 * For switch devices, use setPhyMode() with port index instead.
+	 * 
+	 * @param net Network ID
+	 * @param mode Master/Slave/Auto role
+	 * @return true if successful
+	 */
+	virtual bool setPhyRoleFor(Network net, AELinkMode mode) {
+		(void)net, (void)mode;
+		report(APIEvent::Type::SettingNotAvaiableDevice, APIEvent::Severity::EventWarning);
+		return false;
+	}
+
+	/**
+	 * Enable/disable PHY for network-based devices.
+	 * For switch devices, use setPhyEnable() with port index instead.
+	 * 
+	 * @param net Network ID
+	 * @param enable True to enable, false to disable
+	 * @return true if successful
+	 */
+	virtual bool setPhyEnableFor(Network net, bool enable) {
+		(void)net, (void)enable;
+		report(APIEvent::Type::SettingNotAvaiableDevice, APIEvent::Severity::EventWarning);
+		return false;
+	}
+
+	/**
+	 * Get PHY role (Master/Slave/Auto) for network-based devices.
+	 * For switch devices, use getPhyMode() with port index instead.
+	 * 
+	 * @param net Network ID
+	 * @return Current role, or nullopt if not available
+	 */
+	virtual std::optional<AELinkMode> getPhyRoleFor(Network net) const {
+		(void)net;
+		report(APIEvent::Type::SettingNotAvaiableDevice, APIEvent::Severity::EventWarning);
+		return std::nullopt;
+	}
+
+	/**
+	 * Get PHY enable state for network-based devices.
+
+	 * For switch devices, use getPhyEnable() with port index instead.
+	 * 
+	 * @param net Network ID
+	 * @return True if enabled, false if disabled, nullopt if not available
+	 */
+	virtual std::optional<bool> getPhyEnableFor(Network net) const {
+		(void)net;
+		report(APIEvent::Type::SettingNotAvaiableDevice, APIEvent::Severity::EventWarning);
+		return std::nullopt;
+	}
+
+	/**
+	 * Get supported PHY link modes (combined speed+duplex) for a network.
+	 * Each mode represents a valid hardware configuration.
+	 * 
+	 * @param net The network to query
+	 * @return Vector of supported modes, empty if network doesn't support PHY settings
+	 */
+	virtual std::vector<EthPhyLinkMode> getSupportedPhyLinkModesFor(Network net) const {
+		(void)net;
+		return {}; // Default: no PHY support
+	}
+
+	/**
+	 * Set PHY link mode (speed and duplex together).
+	 * 
+	 * @param net The network to configure
+	 * @param mode The link mode to set
+	 * @return true if successful, false if mode not supported or error occurred
+	 */
+	virtual bool setPhyLinkModeFor(Network net, EthPhyLinkMode mode) {
+		(void)net; (void)mode;
+		report(APIEvent::Type::SettingNotAvaiableDevice, APIEvent::Severity::EventWarning);
+		return false;
+	}
+
+	/**
+	 * Get current PHY link mode.
+	 * 
+	 * @param net The network to query
+	 * @return Current link mode, or nullopt if not available or not configured
+	 */
+	virtual std::optional<EthPhyLinkMode> getPhyLinkModeFor(Network net) const {
+		(void)net;
+		report(APIEvent::Type::SettingNotAvaiableDevice, APIEvent::Severity::EventWarning);
+		return std::nullopt;
+	}
+
+	// 10BASE-T1S. Devices expose a network by overriding getT1SSettingsFor / getT1SSettingsExtFor.
+	// Every field in the mapped struct is readable; a null accessor means the network has no T1S block.
+	std::optional<bool> isT1SPLCAEnabledFor(Network net) const;
+	bool setT1SPLCAFor(Network net, bool enable);
+	std::optional<uint8_t> getT1SLocalIDFor(Network net) const;
+	bool setT1SLocalIDFor(Network net, uint8_t id);
+	std::optional<uint8_t> getT1SMaxNodesFor(Network net) const;
+	bool setT1SMaxNodesFor(Network net, uint8_t nodes);
+	std::optional<uint8_t> getT1STxOppTimerFor(Network net) const;
+	bool setT1STxOppTimerFor(Network net, uint8_t timer);
+	std::optional<uint8_t> getT1SMaxBurstFor(Network net) const;
+	bool setT1SMaxBurstFor(Network net, uint8_t burst);
+	std::optional<uint8_t> getT1SBurstTimerFor(Network net) const;
+	bool setT1SBurstTimerFor(Network net, uint8_t timer);
+	std::optional<uint8_t> getT1SLocalIDAlternateFor(Network net) const;
+	bool setT1SLocalIDAlternateFor(Network net, uint8_t id);
+	std::optional<bool> isT1STerminationEnabledFor(Network net) const;
+	bool setT1STerminationFor(Network net, bool enable);
+	std::optional<bool> isT1SBusDecodingBeaconsEnabledFor(Network net) const;
+	bool setT1SBusDecodingBeaconsFor(Network net, bool enable);
+	std::optional<bool> isT1SBusDecodingAllEnabledFor(Network net) const;
+	bool setT1SBusDecodingAllFor(Network net, bool enable);
+	std::optional<uint8_t> getT1SMultiIDEnableMaskFor(Network net) const;
+	bool setT1SMultiIDEnableMaskFor(Network net, uint8_t mask);
+	std::optional<uint8_t> getT1SMultiIDFor(Network net, uint8_t index) const;
+	bool setT1SMultiIDFor(Network net, uint8_t index, uint8_t id);
+
+	virtual std::optional<bool> isPerfTestEnabled() const {
+		report(APIEvent::Type::SettingNotAvaiableDevice, APIEvent::Severity::EventWarning);
+		return std::nullopt;
+	}
+
+	virtual bool setPerfTestEnable(bool enable) {
+		(void)enable;
+		return false;
+	}
+
+	virtual bool setMiscIOAnalogOutputEnabled(uint8_t pin, bool enabled);
+	virtual bool setMiscIOAnalogOutput(uint8_t pin, MiscIOAnalogVoltage voltage);
+
+	// gPTP methods
+	std::optional<RADGPTPProfile> getGPTPProfile() const;
+	bool setGPTPProfile(RADGPTPProfile profile);
+	std::optional<RADGPTPRole> getGPTPRole() const;
+	bool setGPTPRole(RADGPTPRole role);
+	std::optional<uint8_t> getGPTPEnabledPort() const;
+	bool setGPTPEnabledPort(uint8_t port);
+	std::optional<bool> isGPTPClockSyntonizationEnabled() const;
+	bool setGPTPClockSyntonizationEnabled(bool enable);
+	virtual const RAD_GPTP_SETTINGS* getGPTPSettings() const { return nullptr; }
+	virtual RAD_GPTP_SETTINGS* getMutableGPTPSettings() { return nullptr; }
+
+	/* Linux operating-system settings (Fire3 family devices) */
+
+	// Whether the device is allowed to boot its Linux operating system.
+	std::optional<bool> getLinuxBootEnabled();
+	bool setLinuxBootEnabled(bool enabled);
+
+	// Whether the external WiFi antenna is used (true) instead of the internal antenna (false).
+	std::optional<bool> getExternalWifiAntennaEnabled();
+	bool setExternalWifiAntennaEnabled(bool enabled);
+
+	// Which Ethernet port(s) are reserved for the Linux configuration interface.
+	std::optional<LinuxConfigurationPort> getLinuxConfigurationPort();
+	bool setLinuxConfigurationPort(LinuxConfigurationPort port);
+
+	const void* getRawStructurePointer() const { return settingsInDeviceRAM.data(); }
+	void* getMutableRawStructurePointer() { return settings.data(); }
+	template<typename T> const T* getStructurePointer() const { return reinterpret_cast<const T*>(getRawStructurePointer()); }
+	template<typename T> T* getMutableStructurePointer() { return reinterpret_cast<T*>(getMutableRawStructurePointer()); }
+	template<typename T> T getStructure() const { return *getStructurePointer<T>(); }
+	template<typename T> bool applyStructure(const T& newStructure);
+
+	size_t getSize() const { return structSize; }
+	size_t getSerialSize() const { return settings.size(); }
+
+	// if settings are disabled for this device. always false unless constructed null
+	bool disabled = false;
+
+	bool readonly = false;
+protected:
+	Device* device;
+	device_eventhandler_t report;
+	size_t structSize;
+
+	// if we hold any local copies of the device settings
+	bool settingsLoaded = false;
+
+	std::vector<uint8_t> settings; // For writing settings to, calling apply() should copy over to device RAM (and EEPROM)
+	std::vector<uint8_t> settingsInDeviceRAM; // For reading settings from
+
+	// Parameter createInoperableSettings exists because it is serving as a warning that you probably don't want to do this
+	typedef void* warn_t;
+	IDeviceSettings(warn_t createInoperableSettings, Device* device);
+
+	// Devices that embed a Fire3LinuxSettings block in their settings structure override these to
+	// expose it; all other devices report not-available (nullptr / nullopt) and the Linux accessors
+	// report not-available in turn.
+	virtual const Fire3LinuxSettings* getLinuxSettings() const { return nullptr; }
+	virtual std::optional<Fire3LinuxSettings*> getMutableLinuxSettings() { return std::nullopt; }
+
+	virtual ICSNEO_UNALIGNED(const uint64_t*) getTerminationEnables() const { return nullptr; }
+	virtual ICSNEO_UNALIGNED(uint64_t*) getMutableTerminationEnables() {
+		if(disabled || readonly)
+			return nullptr;
+		const auto offset = reinterpret_cast<ICSNEO_UNALIGNED(const uint8_t*)>(getTerminationEnables());
+		if(offset == nullptr)
+			return nullptr;
+		return reinterpret_cast<ICSNEO_UNALIGNED(uint64_t*)>((void*)(settings.data() + (offset - settingsInDeviceRAM.data())));
+	}
+
+	// Pointer into the device RAM image. Override per device. Unknown networks return nullptr
+	// and do not report; the public T1S methods report SettingNotAvaiableDevice.
+	virtual const ETHERNET10T1S_SETTINGS* getT1SSettingsFor(Network net) const { (void)net; return nullptr; }
+	ETHERNET10T1S_SETTINGS* getMutableT1SSettingsFor(Network net) {
+		if(disabled || readonly)
+			return nullptr;
+		const uint8_t* offset = reinterpret_cast<const uint8_t*>(getT1SSettingsFor(net));
+		if(offset == nullptr)
+			return nullptr;
+		return reinterpret_cast<ETHERNET10T1S_SETTINGS*>(settings.data() + (offset - settingsInDeviceRAM.data()));
+	}
+
+	virtual const ETHERNET10T1S_SETTINGS_EXT* getT1SSettingsExtFor(Network net) const { (void)net; return nullptr; }
+	ETHERNET10T1S_SETTINGS_EXT* getMutableT1SSettingsExtFor(Network net) {
+		if(disabled || readonly)
+			return nullptr;
+		const uint8_t* offset = reinterpret_cast<const uint8_t*>(getT1SSettingsExtFor(net));
+		if(offset == nullptr)
+			return nullptr;
+		return reinterpret_cast<ETHERNET10T1S_SETTINGS_EXT*>(settings.data() + (offset - settingsInDeviceRAM.data()));
+	}
+
+	static bool SetNetworkEnabled(uint64_t* bitfields, size_t count, uint64_t networkID) {
+		const size_t index = networkID / 64;
+		const size_t offset = networkID & 0x3F;
+		if (index >= count)
+			return false;
+		bitfields[index] |= (1ULL << offset);
+		return true;
+	}
+
+	static bool ClearNetworkEnabled(uint64_t* bitfields, size_t count, uint64_t networkID) {
+		const size_t index = networkID / 64;
+		const size_t offset = networkID & 0x3F;
+		if (index >= count)
+			return false;
+		bitfields[index] &= ~(1ULL << offset);
+		return true;
+	}
+
+	static bool GetNetworkEnabled(const uint64_t* bitfields, size_t count, uint64_t networkID) {
+		const size_t index = networkID / 64;
+		const size_t offset = networkID & 0x3F;
+		if (index >= count)
+			return false;
+		return (bitfields[index] & (1ULL << offset)) != 0;
+	}
+};
+
+}
+
+#endif // __cplusplus
+
+#endif

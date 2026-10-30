@@ -1,0 +1,84 @@
+#ifndef __APPERRORMESSAGE_H_
+#define __APPERRORMESSAGE_H_
+
+#ifdef __cplusplus
+
+#include "icsneo/communication/message/message.h"
+#include "icsneo/icsneoc2types.h"
+#include <unordered_set>
+#include <memory>
+#include "icsneo/api/eventmanager.h"
+
+
+namespace icsneo {
+
+enum class AppErrorType : icsneoc2_app_error_type_t {
+	AppErrorRxMessagesFull = icsneoc2_app_error_type_rx_messages_full,
+	AppErrorTxMessagesFull = icsneoc2_app_error_type_tx_messages_full,
+	AppErrorTxReportMessagesFull = icsneoc2_app_error_type_tx_report_messages_full,
+	AppErrorBadCommWithDspIC = icsneoc2_app_error_type_bad_comm_with_dsp_ic,
+	AppErrorDriverOverflow = icsneoc2_app_error_type_driver_overflow,
+	AppErrorPCBuffOverflow = icsneoc2_app_error_type_pc_buff_overflow,
+	AppErrorPCChksumError = icsneoc2_app_error_type_pc_chksum_error,
+	AppErrorPCMissedByte = icsneoc2_app_error_type_pc_missed_byte,
+	AppErrorPCOverrunError = icsneoc2_app_error_type_pc_overrun_error,
+	AppErrorSettingFailure = icsneoc2_app_error_type_setting_failure,
+	AppErrorTooManySelectedNetworks = icsneoc2_app_error_type_too_many_selected_networks,
+	AppErrorNetworkNotEnabled = icsneoc2_app_error_type_network_not_enabled,
+	AppErrorRtcNotCorrect = icsneoc2_app_error_type_rtc_not_correct,
+	AppErrorLoadedDefaultSettings = icsneoc2_app_error_type_loaded_default_settings,
+	AppErrorFeatureNotUnlocked = icsneoc2_app_error_type_feature_not_unlocked,
+	AppErrorFeatureRtcCmdDropped = icsneoc2_app_error_type_feature_rtc_cmd_dropped,
+	AppErrorTxMessagesFlushed = icsneoc2_app_error_type_tx_messages_flushed,
+	AppErrorTxMessagesHalfFull = icsneoc2_app_error_type_tx_messages_half_full,
+	AppErrorNetworkNotValid = icsneoc2_app_error_type_network_not_valid,
+	AppErrorTxInterfaceNotImplemented = icsneoc2_app_error_type_tx_interface_not_implemented,
+	AppErrorTxMessagesCommEnableIsOff = icsneoc2_app_error_type_tx_messages_comm_enable_is_off,
+	AppErrorRxFilterMatchCountExceeded = icsneoc2_app_error_type_rx_filter_match_count_exceeded,
+	AppErrorEthPreemptionNotEnabled = icsneoc2_app_error_type_eth_preemption_not_enabled,
+	AppErrorTxNotSupportedInMode = icsneoc2_app_error_type_tx_not_supported_in_mode,
+	AppErrorJumboFramesNotSupported = icsneoc2_app_error_type_jumbo_frames_not_supported,
+	AppErrorEthernetIpFragment = icsneoc2_app_error_type_ethernet_ip_fragment,
+	AppErrorTxMessagesUnderrun = icsneoc2_app_error_type_tx_messages_underrun,
+	AppErrorDeviceFanFailure = icsneoc2_app_error_type_device_fan_failure,
+	AppErrorDeviceOvertemperature = icsneoc2_app_error_type_device_overtemperature,
+	AppErrorTxMessageIndexOutOfRange = icsneoc2_app_error_type_tx_message_index_out_of_range,
+	AppErrorUndersizedFrameDropped = icsneoc2_app_error_type_undersized_frame_dropped,
+	AppErrorOversizedFrameDropped = icsneoc2_app_error_type_oversized_frame_dropped,
+	AppErrorWatchdogEvent = icsneoc2_app_error_type_watchdog_event,
+	AppErrorSystemClockFailure = icsneoc2_app_error_type_system_clock_failure,
+	AppErrorSystemClockRecovered = icsneoc2_app_error_type_system_clock_recovered,
+	AppErrorSystemPeripheralReset = icsneoc2_app_error_type_system_peripheral_reset,
+	AppErrorSystemCommunicationFailure = icsneoc2_app_error_type_system_communication_failure,
+	AppErrorTxMessagesUnsupportedSourceOrPacketId = icsneoc2_app_error_type_tx_messages_unsupported_source_or_packet_id,
+	AppErrorWbmsManagerConnectFailed = icsneoc2_app_error_type_wbms_manager_connect_failed,
+	AppErrorWbmsManagerConnectBadState = icsneoc2_app_error_type_wbms_manager_connect_bad_state,
+	AppErrorWbmsManagerConnectTimeout = icsneoc2_app_error_type_wbms_manager_connect_timeout,
+	AppErrorFailedToInitializeLoggerDisk = icsneoc2_app_error_type_failed_to_initialize_logger_disk,
+	AppErrorInvalidSetting = icsneoc2_app_error_type_invalid_setting,
+	AppErrorSystemFailureRequestedReset = icsneoc2_app_error_type_system_failure_requested_reset,
+	AppErrorPortKeyMistmatch = icsneoc2_app_error_type_port_key_mistmatch,
+	AppErrorBusFailure = icsneoc2_app_error_type_bus_failure,
+	AppErrorTapOverflow = icsneoc2_app_error_type_tap_overflow,
+	AppErrorEthTxNoLink = icsneoc2_app_error_type_eth_tx_no_link,
+	AppErrorErrorBufferOverflow = icsneoc2_app_error_type_error_buffer_overflow,
+	AppNoError = icsneoc2_app_error_type_no_error
+};
+
+class AppErrorMessage : public RawMessage {
+public:
+	AppErrorMessage() : RawMessage(Message::Type::AppError, Network::NetID::RED_App_Error) {}
+	uint16_t errorType;
+	Network::NetID errorNetID;
+	uint32_t timestamp10us;
+	uint32_t timestamp10usMSB;
+
+	static std::shared_ptr<Message> DecodeToMessage(const std::vector<uint8_t>& bytestream, const device_eventhandler_t& report);
+	AppErrorType getAppErrorType();
+	std::string getAppErrorString();
+};
+
+} // namespace icsneo
+
+#endif // __cplusplus
+#endif

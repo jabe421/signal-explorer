@@ -1,0 +1,5 @@
+add_executable(libicsneoc-interactive-example src/main.c)
+if(UNIX)
+	target_link_libraries(libicsneoc-interactive-example ${CMAKE_DL_LIBS})
+endif()
+target_link_libraries(libicsneoc-interactive-example icsneoc)

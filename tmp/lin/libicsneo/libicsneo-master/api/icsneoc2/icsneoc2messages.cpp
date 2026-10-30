@@ -1,0 +1,711 @@
+#include "icsneo/icsneoc2messages.h" // TODO: Remove this after the complete refactor
+
+#include "icsneo/icsneoc2.h"
+#include "icsneoc2_internal.h"
+
+#include "icsneo/icsneocpp.h"
+#include "icsneo/communication/message/message.h"
+#include "icsneo/communication/message/canmessage.h"
+#include "icsneo/communication/message/canerrormessage.h"
+#include "icsneo/communication/message/apperrormessage.h"
+#include "icsneo/communication/message/linmessage.h"
+#include "icsneo/communication/message/ethernetmessage.h"
+#include "icsneo/communication/message/ethernetstatusmessage.h"
+#include "icsneo/communication/packet/canpacket.h"
+
+icsneoc2_error_t icsneoc2_message_is_valid(icsneoc2_message_t* message, bool* is_valid) {
+	if(!message || !is_valid) {
+		return icsneoc2_error_invalid_parameters;
+	}
+
+	*is_valid = (bool)message->message;
+
+	return icsneoc2_error_success;
+}
+
+icsneoc2_error_t icsneoc2_message_is_transmit(icsneoc2_message_t* message, bool* value) {
+	if(!message || !value) {
+		return icsneoc2_error_invalid_parameters;
+	}
+	// We can static cast here because we are relying on the type being correct at this point
+	auto frame = std::dynamic_pointer_cast<Frame>(message->message);
+	if(!frame) {
+		return icsneoc2_error_invalid_type;
+	}
+	*value = frame->transmitted;
+
+	return icsneoc2_error_success;
+}
+
+icsneoc2_error_t icsneoc2_message_is_error(icsneoc2_message_t* message, bool* value) {
+	if(!message || !value) {
+		return icsneoc2_error_invalid_parameters;
+	}
+	auto frame = std::dynamic_pointer_cast<Frame>(message->message);
+	if(!frame) {
+		return icsneoc2_error_invalid_type;
+	}
+	*value = frame->error;
+
+	return icsneoc2_error_success;
+}
+
+icsneoc2_error_t icsneoc2_message_netid_get(icsneoc2_message_t* message, icsneoc2_netid_t* netid) {
+	if(!message || !netid) {
+		return icsneoc2_error_invalid_parameters;
+	}
+	auto raw = std::dynamic_pointer_cast<RawMessage>(message->message);
+	if(!raw) {
+		return icsneoc2_error_invalid_type;
+	}
+	*netid = static_cast<icsneoc2_netid_t>(raw->network.getNetID());
+	return icsneoc2_error_success;
+}
+
+icsneoc2_error_t icsneoc2_netid_name_get(icsneoc2_netid_t netid, char* value, size_t* value_length) {
+	if(!value || !value_length) {
+		return icsneoc2_error_invalid_parameters;
+	}
+	auto netid_str = std::string(Network::GetNetIDString(static_cast<Network::NetID>(netid), true));
+	// Copy the string into value
+	return safe_str_copy(value, value_length, netid_str) ? icsneoc2_error_success : icsneoc2_error_string_copy_failed;
+}
+
+icsneoc2_error_t icsneoc2_netid_network_type_get(icsneoc2_netid_t netid, icsneoc2_network_type_t* network_type) {
+	if(!network_type) {
+		return icsneoc2_error_invalid_parameters;
+	}
+	*network_type = static_cast<icsneoc2_network_type_t>(Network::GetTypeOfNetID(static_cast<Network::NetID>(netid), true));
+	return icsneoc2_error_success;
+}
+
+icsneoc2_error_t icsneoc2_message_netid_set(icsneoc2_message_t* message, icsneoc2_netid_t netid) {
+	if(!message) {
+		return icsneoc2_error_invalid_parameters;
+	}
+	auto raw = std::dynamic_pointer_cast<RawMessage>(message->message);
+	if(!raw) {
+		return icsneoc2_error_invalid_type;
+	}
+	raw->network = Network(static_cast<neonetid_t>(netid), true);
+	return icsneoc2_error_success;
+}
+
+icsneoc2_error_t icsneoc2_message_data_set(icsneoc2_message_t* message, uint8_t* data, size_t data_length) {
+	if(!message || !data) {
+		return icsneoc2_error_invalid_parameters;
+	}
+	// Make sure the message has the data field (RawMessage or Frame)
+	auto raw_message = std::dynamic_pointer_cast<RawMessage>(message->message);
+	if(!raw_message) {
+		return icsneoc2_error_invalid_type;
+	}
+	raw_message->data.resize(data_length);
+	std::copy(data, data + data_length, raw_message->data.begin());
+
+	return icsneoc2_error_success;
+}
+
+icsneoc2_error_t icsneoc2_message_data_get(icsneoc2_message_t* message, uint8_t* data, size_t* data_length) {
+	if(!message || !data_length) {
+		return icsneoc2_error_invalid_parameters;
+	}
+	// Make sure the message has the data field (RawMessage or Frame)
+	auto raw_message = std::dynamic_pointer_cast<RawMessage>(message->message);
+	if(!raw_message) {
+		return icsneoc2_error_invalid_type;
+	}
+	if(!data) {
+		*data_length = raw_message->data.size();
+		return icsneoc2_error_success;
+	}
+	if(*data_length < raw_message->data.size()) {
+		return icsneoc2_error_invalid_parameters;
+	}
+	std::copy(raw_message->data.begin(), raw_message->data.begin() + raw_message->data.size(), data);
+	*data_length = raw_message->data.size();
+
+	return icsneoc2_error_success;
+}
+
+icsneoc2_error_t icsneoc2_message_timestamp_set(icsneoc2_message_t* message, uint64_t timestamp) {
+	if(!message) {
+		return icsneoc2_error_invalid_parameters;
+	}
+	if(!message->message) {
+		return icsneoc2_error_invalid_message;
+	}
+	message->message->timestamp = timestamp;
+	return icsneoc2_error_success;
+}
+
+icsneoc2_error_t icsneoc2_message_timestamp_get(icsneoc2_message_t* message, uint64_t* timestamp) {
+	if(!message || !timestamp) {
+		return icsneoc2_error_invalid_parameters;
+	}
+	if(!message->message) {
+		return icsneoc2_error_invalid_message;
+	}
+	*timestamp = message->message->timestamp;
+	return icsneoc2_error_success;
+}
+
+icsneoc2_error_t icsneoc2_message_can_create(icsneoc2_message_t** message) {
+	if(!message) {
+		return icsneoc2_error_invalid_parameters;
+	}
+	try {
+		*message = new icsneoc2_message_t;
+		// Initialize the internal message as a CANMessage so that all icsneoc2_message_can_*_set
+		// functions work correctly on user-created transmit messages.
+		(*message)->message = std::make_shared<CANMessage>();
+	} catch(const std::bad_alloc&) {
+		return icsneoc2_error_out_of_memory;
+	}
+	return icsneoc2_error_success;
+}
+
+icsneoc2_error_t icsneoc2_message_free(icsneoc2_message_t* message) {
+	if(!message) {
+		return icsneoc2_error_invalid_parameters;
+	}
+	delete message;
+	return icsneoc2_error_success;
+}
+
+icsneoc2_error_t icsneoc2_message_can_props_set(icsneoc2_message_t* message, const uint64_t* arb_id, const uint64_t* flags) {
+	if(!message) {
+		return icsneoc2_error_invalid_parameters;
+	}
+	auto can_msg = std::dynamic_pointer_cast<CANMessage>(message->message);
+	if(!can_msg) {
+		return icsneoc2_error_invalid_type;
+	}
+	if(arb_id) {
+		can_msg->arbid = static_cast<uint32_t>(*arb_id);
+	}
+	if(flags) {
+		can_msg->isRemote = (*flags & ICSNEOC2_MESSAGE_CAN_FLAGS_RTR);
+		can_msg->isExtended = (*flags & ICSNEOC2_MESSAGE_CAN_FLAGS_IDE);
+		can_msg->isCANFD = (*flags & ICSNEOC2_MESSAGE_CAN_FLAGS_FDF);
+		can_msg->baudrateSwitch = (*flags & ICSNEOC2_MESSAGE_CAN_FLAGS_BRS);
+		can_msg->errorStateIndicator = (*flags & ICSNEOC2_MESSAGE_CAN_FLAGS_ESI);
+	}
+	return icsneoc2_error_success;
+}
+
+icsneoc2_error_t icsneoc2_message_can_props_get(icsneoc2_message_t* message, uint64_t* arb_id, uint64_t* flags) {
+	if(!message) {
+		return icsneoc2_error_invalid_parameters;
+	}
+	auto can_msg = std::dynamic_pointer_cast<CANMessage>(message->message);
+	if(!can_msg) {
+		return icsneoc2_error_invalid_type;
+	}
+	if(arb_id) {
+		*arb_id = can_msg->arbid;
+	}
+	if(flags) {
+		*flags = 0;
+		if(can_msg->isRemote) {
+			*flags |= ICSNEOC2_MESSAGE_CAN_FLAGS_RTR;
+		}
+		if(can_msg->isExtended) {
+			*flags |= ICSNEOC2_MESSAGE_CAN_FLAGS_IDE;
+		}
+		if(can_msg->isCANFD) {
+			*flags |= ICSNEOC2_MESSAGE_CAN_FLAGS_FDF;
+		}
+		if(can_msg->baudrateSwitch) {
+			*flags |= ICSNEOC2_MESSAGE_CAN_FLAGS_BRS;
+		}
+		if(can_msg->errorStateIndicator) {
+			*flags |= ICSNEOC2_MESSAGE_CAN_FLAGS_ESI;
+		}
+		if(can_msg->txAborted) {
+			*flags |= ICSNEOC2_MESSAGE_CAN_FLAGS_TX_ABORTED;
+		}
+		if(can_msg->txLostArb) {
+			*flags |= ICSNEOC2_MESSAGE_CAN_FLAGS_TX_LOST_ARB;
+		}
+		if(can_msg->txError) {
+			*flags |= ICSNEOC2_MESSAGE_CAN_FLAGS_TX_ERROR;
+		}
+	}
+	return icsneoc2_error_success;
+}
+
+icsneoc2_error_t icsneoc2_message_network_type_get(icsneoc2_message_t* message, icsneoc2_network_type_t* network_type) {
+	if(!message) {
+		return icsneoc2_error_invalid_parameters;
+	}
+	auto raw = std::dynamic_pointer_cast<RawMessage>(message->message);
+	if(!raw) {
+		return icsneoc2_error_invalid_type;
+	}
+	*network_type = (icsneoc2_network_type_t)raw->network.getType();
+	return icsneoc2_error_success;
+}
+
+icsneoc2_error_t icsneoc2_message_is_raw(icsneoc2_message_t* message, bool* is_raw) {
+	if(!message) {
+		return icsneoc2_error_invalid_parameters;
+	}
+	*is_raw = std::dynamic_pointer_cast<RawMessage>(message->message) != nullptr;
+	return icsneoc2_error_success;
+}
+
+icsneoc2_error_t icsneoc2_message_is_frame(icsneoc2_message_t* message, bool* is_frame) {
+	if(!message) {
+		return icsneoc2_error_invalid_parameters;
+	}
+	*is_frame = std::dynamic_pointer_cast<Frame>(message->message) != nullptr;
+	return icsneoc2_error_success;
+}
+
+icsneoc2_error_t icsneoc2_message_is_can(icsneoc2_message_t* message, bool* is_can) {
+	if(!message) {
+		return icsneoc2_error_invalid_parameters;
+	}
+	*is_can = std::dynamic_pointer_cast<CANMessage>(message->message) != nullptr;
+	return icsneoc2_error_success;
+}
+
+icsneoc2_error_t icsneoc2_message_is_can_error(icsneoc2_message_t* message, bool* is_can_error) {
+	if(!message || !is_can_error) {
+		return icsneoc2_error_invalid_parameters;
+	}
+	*is_can_error = std::dynamic_pointer_cast<CANErrorMessage>(message->message) != nullptr;
+	return icsneoc2_error_success;
+}
+
+icsneoc2_error_t icsneoc2_message_can_error_props_get(
+    icsneoc2_message_t *message, uint8_t *tx_err_count, uint8_t *rx_err_count,
+    icsneoc2_can_error_code_t *error_code,
+    icsneoc2_can_error_code_t *data_error_code,
+    icsneoc2_message_can_error_flags_t *flags) {
+	if(!message) {
+		return icsneoc2_error_invalid_parameters;
+	}
+	auto can_err = std::dynamic_pointer_cast<CANErrorMessage>(message->message);
+	if(!can_err) {
+		return icsneoc2_error_invalid_type;
+	}
+	if(tx_err_count) {
+		*tx_err_count = can_err->transmitErrorCount;
+	}
+	if(rx_err_count) {
+		*rx_err_count = can_err->receiveErrorCount;
+	}
+	if(error_code) {
+		*error_code = static_cast<icsneoc2_can_error_code_t>(can_err->errorCode);
+	}
+	if(data_error_code) {
+		*data_error_code = static_cast<icsneoc2_can_error_code_t>(can_err->dataErrorCode);
+	}
+	if(flags) {
+		*flags = 0;
+		if(can_err->busOff) {
+			*flags |= ICSNEOC2_MESSAGE_CAN_ERROR_FLAGS_BUS_OFF;
+		}
+		if(can_err->errorPassive) {
+			*flags |= ICSNEOC2_MESSAGE_CAN_ERROR_FLAGS_ERROR_PASSIVE;
+		}
+		if(can_err->errorWarn) {
+			*flags |= ICSNEOC2_MESSAGE_CAN_ERROR_FLAGS_ERROR_WARN;
+		}
+	}
+	return icsneoc2_error_success;
+}
+
+icsneoc2_error_t icsneoc2_message_is_app_error(icsneoc2_message_t* message, bool* is_app_error) {
+	if(!message || !is_app_error) {
+		return icsneoc2_error_invalid_parameters;
+	}
+	*is_app_error = std::dynamic_pointer_cast<AppErrorMessage>(message->message) != nullptr;
+	return icsneoc2_error_success;
+}
+
+icsneoc2_error_t icsneoc2_message_app_error_props_get(icsneoc2_message_t* message,
+    icsneoc2_app_error_type_t* error_type, icsneoc2_netid_t* error_netid) {
+	if(!message) {
+		return icsneoc2_error_invalid_parameters;
+	}
+	auto app_err = std::dynamic_pointer_cast<AppErrorMessage>(message->message);
+	if(!app_err) {
+		return icsneoc2_error_invalid_type;
+	}
+	if(error_type) {
+		*error_type = static_cast<icsneoc2_app_error_type_t>(app_err->getAppErrorType());
+	}
+	if(error_netid) {
+		*error_netid = static_cast<icsneoc2_netid_t>(app_err->errorNetID);
+	}
+	return icsneoc2_error_success;
+}
+
+icsneoc2_error_t icsneoc2_message_app_error_string_get(icsneoc2_message_t* message,
+    char* value, size_t* value_length) {
+	if(!message || !value_length) {
+		return icsneoc2_error_invalid_parameters;
+	}
+	auto app_err = std::dynamic_pointer_cast<AppErrorMessage>(message->message);
+	if(!app_err) {
+		return icsneoc2_error_invalid_type;
+	}
+	return safe_str_copy(value, value_length, app_err->getAppErrorString()) ? icsneoc2_error_success : icsneoc2_error_string_copy_failed;
+}
+
+icsneoc2_error_t icsneoc2_message_is_lin(icsneoc2_message_t* message, bool* is_lin) {
+	if(!message || !is_lin) {
+		return icsneoc2_error_invalid_parameters;
+	}
+	*is_lin = std::dynamic_pointer_cast<LINMessage>(message->message) != nullptr;
+	return icsneoc2_error_success;
+}
+
+icsneoc2_error_t icsneoc2_message_lin_create(icsneoc2_message_t** message, uint8_t id) {
+	if(!message) {
+		return icsneoc2_error_invalid_parameters;
+	}
+	try {
+		*message = new icsneoc2_message_t;
+		(*message)->message = std::make_shared<LINMessage>(id);
+	} catch(const std::bad_alloc&) {
+		return icsneoc2_error_out_of_memory;
+	}
+	return icsneoc2_error_success;
+}
+
+icsneoc2_error_t icsneoc2_message_lin_props_get(const icsneoc2_message_t* message,
+	uint8_t* id, uint8_t* protected_id, uint8_t* checksum,
+	icsneoc2_lin_msg_type_t* msg_type, bool* is_enhanced_checksum) {
+	if(!message) {
+		return icsneoc2_error_invalid_parameters;
+	}
+	auto lin_msg = std::dynamic_pointer_cast<LINMessage>(message->message);
+	if(!lin_msg) {
+		return icsneoc2_error_invalid_type;
+	}
+	if(id) {
+		*id = lin_msg->ID;
+	}
+	if(protected_id) {
+		*protected_id = lin_msg->protectedID;
+	}
+	if(checksum) {
+		*checksum = lin_msg->checksum;
+	}
+	if(msg_type) {
+		*msg_type = static_cast<icsneoc2_lin_msg_type_t>(lin_msg->linMsgType);
+	}
+	if(is_enhanced_checksum) {
+		*is_enhanced_checksum = lin_msg->isEnhancedChecksum;
+	}
+	return icsneoc2_error_success;
+}
+
+icsneoc2_error_t icsneoc2_message_lin_props_set(icsneoc2_message_t* message,
+	const uint8_t* id, const uint8_t* checksum,
+	const icsneoc2_lin_msg_type_t* msg_type, const bool* is_enhanced_checksum) {
+	if(!message) {
+		return icsneoc2_error_invalid_parameters;
+	}
+	auto lin_msg = std::dynamic_pointer_cast<LINMessage>(message->message);
+	if(!lin_msg) {
+		return icsneoc2_error_invalid_type;
+	}
+	if(id) {
+		lin_msg->ID = *id & 0x3Fu;
+		lin_msg->protectedID = lin_msg->calcProtectedID(lin_msg->ID);
+	}
+	if(checksum) {
+		lin_msg->checksum = *checksum;
+	}
+	if(msg_type) {
+		lin_msg->linMsgType = static_cast<LINMessage::Type>(*msg_type);
+	}
+	if(is_enhanced_checksum) {
+		lin_msg->isEnhancedChecksum = *is_enhanced_checksum;
+	}
+	return icsneoc2_error_success;
+}
+
+icsneoc2_error_t icsneoc2_message_lin_err_flags_get(const icsneoc2_message_t* message, icsneoc2_lin_err_flags_t* err_flags) {
+	if(!message || !err_flags) {
+		return icsneoc2_error_invalid_parameters;
+	}
+	auto lin_msg = std::dynamic_pointer_cast<LINMessage>(message->message);
+	if(!lin_msg) {
+		return icsneoc2_error_invalid_type;
+	}
+	*err_flags = 0;
+	if(lin_msg->errFlags.ErrRxBreakOnly) *err_flags |= ICSNEOC2_LIN_ERR_RX_BREAK_ONLY;
+	if(lin_msg->errFlags.ErrRxBreakSyncOnly) *err_flags |= ICSNEOC2_LIN_ERR_RX_BREAK_SYNC_ONLY;
+	if(lin_msg->errFlags.ErrTxRxMismatch) *err_flags |= ICSNEOC2_LIN_ERR_TX_RX_MISMATCH;
+	if(lin_msg->errFlags.ErrRxBreakNotZero) *err_flags |= ICSNEOC2_LIN_ERR_RX_BREAK_NOT_ZERO;
+	if(lin_msg->errFlags.ErrRxBreakTooShort) *err_flags |= ICSNEOC2_LIN_ERR_RX_BREAK_TOO_SHORT;
+	if(lin_msg->errFlags.ErrRxSyncNot55) *err_flags |= ICSNEOC2_LIN_ERR_RX_SYNC_NOT_55;
+	if(lin_msg->errFlags.ErrRxDataLenOver8) *err_flags |= ICSNEOC2_LIN_ERR_RX_DATA_LEN_OVER_8;
+	if(lin_msg->errFlags.ErrFrameSync) *err_flags |= ICSNEOC2_LIN_ERR_FRAME_SYNC;
+	if(lin_msg->errFlags.ErrFrameMessageID) *err_flags |= ICSNEOC2_LIN_ERR_FRAME_MESSAGE_ID;
+	if(lin_msg->errFlags.ErrFrameResponderData) *err_flags |= ICSNEOC2_LIN_ERR_FRAME_RESPONDER_DATA;
+	if(lin_msg->errFlags.ErrChecksumMatch) *err_flags |= ICSNEOC2_LIN_ERR_CHECKSUM_MATCH;
+	return icsneoc2_error_success;
+}
+
+icsneoc2_error_t icsneoc2_message_lin_status_flags_get(const icsneoc2_message_t* message, icsneoc2_lin_status_flags_t* status_flags) {
+	if(!message || !status_flags) {
+		return icsneoc2_error_invalid_parameters;
+	}
+	auto lin_msg = std::dynamic_pointer_cast<LINMessage>(message->message);
+	if(!lin_msg) {
+		return icsneoc2_error_invalid_type;
+	}
+	*status_flags = 0;
+	if(lin_msg->statusFlags.TxChecksumEnhanced) *status_flags |= ICSNEOC2_LIN_STATUS_TX_CHECKSUM_ENHANCED;
+	if(lin_msg->statusFlags.TxCommander) *status_flags |= ICSNEOC2_LIN_STATUS_TX_COMMANDER;
+	if(lin_msg->statusFlags.TxResponder) *status_flags |= ICSNEOC2_LIN_STATUS_TX_RESPONDER;
+	if(lin_msg->statusFlags.TxAborted) *status_flags |= ICSNEOC2_LIN_STATUS_TX_ABORTED;
+	if(lin_msg->statusFlags.UpdateResponderOnce) *status_flags |= ICSNEOC2_LIN_STATUS_UPDATE_RESPONDER_ONCE;
+	if(lin_msg->statusFlags.HasUpdatedResponderOnce) *status_flags |= ICSNEOC2_LIN_STATUS_HAS_UPDATED_RESPONDER_ONCE;
+	if(lin_msg->statusFlags.BusRecovered) *status_flags |= ICSNEOC2_LIN_STATUS_BUS_RECOVERED;
+	if(lin_msg->statusFlags.BreakOnly) *status_flags |= ICSNEOC2_LIN_STATUS_BREAK_ONLY;
+	if(lin_msg->statusFlags.WakeupRequest) *status_flags |= ICSNEOC2_LIN_STATUS_WAKEUP_REQUEST;
+	return icsneoc2_error_success;
+}
+
+icsneoc2_error_t icsneoc2_message_lin_calc_checksum(icsneoc2_message_t* message) {
+	if(!message) {
+		return icsneoc2_error_invalid_parameters;
+	}
+	auto lin_msg = std::dynamic_pointer_cast<LINMessage>(message->message);
+	if(!lin_msg) {
+		return icsneoc2_error_invalid_type;
+	}
+	LINMessage::calcChecksum(*lin_msg);
+	return icsneoc2_error_success;
+}
+
+icsneoc2_error_t icsneoc2_message_eth_create(icsneoc2_message_t** message) {
+	if(!message) {
+		return icsneoc2_error_invalid_parameters;
+	}
+	try {
+		*message = new icsneoc2_message_t;
+		(*message)->message = std::make_shared<EthernetMessage>();
+	} catch(const std::bad_alloc&) {
+		return icsneoc2_error_out_of_memory;
+	}
+	return icsneoc2_error_success;
+}
+
+icsneoc2_error_t icsneoc2_message_eth_props_set(icsneoc2_message_t* message, const icsneoc2_message_eth_flags_t* flags, const bool* has_fcs, const uint32_t* fcs) {
+	if(!message) {
+		return icsneoc2_error_invalid_parameters;
+	}
+	auto eth_msg = std::dynamic_pointer_cast<EthernetMessage>(message->message);
+	if(!eth_msg) {
+		return icsneoc2_error_invalid_type;
+	}
+	if(flags) {
+		eth_msg->frameTooShort = (*flags & ICSNEOC2_MESSAGE_ETH_FLAGS_FRAME_TOO_SHORT);
+		eth_msg->noPadding = (*flags & ICSNEOC2_MESSAGE_ETH_FLAGS_NO_PADDING);
+		eth_msg->fcsVerified = (*flags & ICSNEOC2_MESSAGE_ETH_FLAGS_FCS_VERIFIED);
+		eth_msg->txAborted = (*flags & ICSNEOC2_MESSAGE_ETH_FLAGS_TX_ABORTED);
+		eth_msg->crcError = (*flags & ICSNEOC2_MESSAGE_ETH_FLAGS_CRC_ERROR);
+	}
+	if(has_fcs && !*has_fcs) {
+		eth_msg->fcs = std::nullopt;
+	} else if(has_fcs && *has_fcs) {
+		// I'm pretty sure we can leave this alone, setting fcs below will take care of the behavior,
+		// otherwise we get into a weird state where we have to set fcs to zero if fcs is null but has_fcs is true.
+	}
+	if (fcs) {
+		eth_msg->fcs = *fcs;
+	}
+	return icsneoc2_error_success;
+}
+
+icsneoc2_error_t icsneoc2_message_eth_props_get(icsneoc2_message_t* message, icsneoc2_message_eth_flags_t* flags, bool* has_fcs, uint32_t* fcs) {
+	if(!message) {
+		return icsneoc2_error_invalid_parameters;
+	}
+	auto eth_msg = std::dynamic_pointer_cast<EthernetMessage>(message->message);
+	if(!eth_msg) {
+		return icsneoc2_error_invalid_type;
+	}
+	if(flags) {
+		*flags = 0;
+		if(eth_msg->noPadding)
+			*flags |= ICSNEOC2_MESSAGE_ETH_FLAGS_NO_PADDING;
+		if(eth_msg->fcsVerified)
+			*flags |= ICSNEOC2_MESSAGE_ETH_FLAGS_FCS_VERIFIED;
+		if(eth_msg->txAborted)
+			*flags |= ICSNEOC2_MESSAGE_ETH_FLAGS_TX_ABORTED;
+		if(eth_msg->crcError)
+			*flags |= ICSNEOC2_MESSAGE_ETH_FLAGS_CRC_ERROR;
+		if(eth_msg->frameTooShort)
+			*flags |= ICSNEOC2_MESSAGE_ETH_FLAGS_FRAME_TOO_SHORT;
+	}
+	if(has_fcs) {
+		*has_fcs = eth_msg->fcs.has_value();
+	}
+	if(fcs) {
+		if(eth_msg->fcs) {
+			*fcs = eth_msg->fcs.value();
+		} else {
+			*fcs = 0;
+		}
+	}
+	return icsneoc2_error_success;
+}
+
+icsneoc2_error_t icsneoc2_message_eth_mac_get(icsneoc2_message_t* message, uint8_t* dst_mac, uint8_t* src_mac) {
+	if(!message) {
+		return icsneoc2_error_invalid_parameters;
+	}
+	auto eth_msg = std::dynamic_pointer_cast<EthernetMessage>(message->message);
+	if(!eth_msg) {
+		return icsneoc2_error_invalid_type;
+	}
+	if(dst_mac) {
+		if(auto mac = eth_msg->getDestinationMAC(); mac.has_value()) {
+			const auto& mac_value = mac.value();
+			std::memcpy(dst_mac, mac_value.data(), mac_value.size());
+		} else {
+			return icsneoc2_error_invalid_data;
+		}
+	}
+	if(src_mac) {
+		if(auto mac = eth_msg->getSourceMAC(); mac.has_value()) {
+			const auto& mac_value = mac.value();
+			std::memcpy(src_mac, mac_value.data(), mac_value.size());
+		} else {
+			return icsneoc2_error_invalid_data;
+		}
+	}
+	return icsneoc2_error_success;
+}
+
+icsneoc2_error_t icsneoc2_message_eth_ether_type_get(icsneoc2_message_t* message, uint16_t* ether_type) {
+	if(!message || !ether_type) {
+		return icsneoc2_error_invalid_parameters;
+	}
+	auto eth_msg = std::dynamic_pointer_cast<EthernetMessage>(message->message);
+	if(!eth_msg) {
+		return icsneoc2_error_invalid_type;
+	}
+	if (auto et = eth_msg->getEtherType(); et.has_value()) {
+		*ether_type = et.value();
+	} else {
+		return icsneoc2_error_invalid_data;
+	}
+	return icsneoc2_error_success;
+}
+
+icsneoc2_error_t icsneoc2_message_eth_t1s_props_set(icsneoc2_message_t* message, const icsneoc2_message_eth_t1s_flags_t* flags, const uint8_t* node_id, const uint8_t* burst_count, const uint8_t* symbol_type) {
+	if(!message) {
+		return icsneoc2_error_invalid_parameters;
+	}
+	auto eth_msg = std::dynamic_pointer_cast<EthernetMessage>(message->message);
+	if(!eth_msg) {
+		return icsneoc2_error_invalid_type;
+	}
+	// If all parameters are null/zero, clear the T1S state. Otherwise, if any parameters are set and we don't have a T1S state, create it.
+	if(!flags && !node_id && !burst_count && !symbol_type) {
+		eth_msg->t1s = std::nullopt;
+		return icsneoc2_error_success;
+	}
+	if((flags || node_id || burst_count || symbol_type) && !eth_msg->t1s.has_value()) {
+		eth_msg->t1s.emplace();
+	}
+	if(flags) {
+		eth_msg->t1s->isSymbol = (*flags & ICSNEOC2_MESSAGE_ETH_T1S_FLAGS_IS_T1S_SYMBOL);
+		eth_msg->t1s->isBurst = (*flags & ICSNEOC2_MESSAGE_ETH_T1S_FLAGS_IS_T1S_BURST);
+		eth_msg->t1s->txCollision = (*flags & ICSNEOC2_MESSAGE_ETH_T1S_FLAGS_TX_COLLISION);
+		eth_msg->t1s->isWake = (*flags & ICSNEOC2_MESSAGE_ETH_T1S_FLAGS_IS_T1S_WAKE);
+	}
+	if(node_id) {
+		eth_msg->t1s->nodeId = *node_id;
+	}
+	if(burst_count) {
+		eth_msg->t1s->burstCount = *burst_count;
+	}
+	if(symbol_type) {
+		eth_msg->t1s->symbolType = *symbol_type;
+	}
+	return icsneoc2_error_success;
+}
+
+icsneoc2_error_t icsneoc2_message_eth_t1s_props_get(icsneoc2_message_t* message, icsneoc2_message_eth_t1s_flags_t* flags, uint8_t* node_id, uint8_t* burst_count, uint8_t* symbol_type) {
+	if(!message) {
+		return icsneoc2_error_invalid_parameters;
+	}
+	auto eth_msg = std::dynamic_pointer_cast<EthernetMessage>(message->message);
+	if(!eth_msg) {
+		return icsneoc2_error_invalid_type;
+	}
+	if(flags) {
+		*flags = 0;
+		if(eth_msg->t1s.has_value()) {
+			if(eth_msg->t1s->isSymbol)
+				*flags |= ICSNEOC2_MESSAGE_ETH_T1S_FLAGS_IS_T1S_SYMBOL;
+			if(eth_msg->t1s->isBurst)
+				*flags |= ICSNEOC2_MESSAGE_ETH_T1S_FLAGS_IS_T1S_BURST;
+			if(eth_msg->t1s->txCollision)
+				*flags |= ICSNEOC2_MESSAGE_ETH_T1S_FLAGS_TX_COLLISION;
+			if(eth_msg->t1s->isWake)
+				*flags |= ICSNEOC2_MESSAGE_ETH_T1S_FLAGS_IS_T1S_WAKE;
+		}
+	}
+	if(node_id) {
+		*node_id = eth_msg->t1s.has_value() ? eth_msg->t1s->nodeId : 0;
+	}
+	if(burst_count) {
+		*burst_count = eth_msg->t1s.has_value() ? eth_msg->t1s->burstCount : 0;
+	}
+	if(symbol_type) {
+		*symbol_type = eth_msg->t1s.has_value() ? eth_msg->t1s->symbolType : 0;
+	}
+	return icsneoc2_error_success;
+}
+
+icsneoc2_error_t icsneoc2_message_is_ethernet(icsneoc2_message_t* message, bool* is_ethernet) {
+	if(!message || !is_ethernet) {
+		return icsneoc2_error_invalid_parameters;
+	}
+	*is_ethernet = std::dynamic_pointer_cast<EthernetMessage>(message->message) != nullptr;
+	return icsneoc2_error_success;
+}
+
+icsneoc2_error_t icsneoc2_message_is_ethernet_status(icsneoc2_message_t* message, bool* is_ethernet_status) {
+	if(!message || !is_ethernet_status) {
+		return icsneoc2_error_invalid_parameters;
+	}
+	*is_ethernet_status = std::dynamic_pointer_cast<EthernetStatusMessage>(message->message) != nullptr;
+	return icsneoc2_error_success;
+}
+
+icsneoc2_error_t icsneoc2_message_eth_status_props_get(icsneoc2_message_t* message, bool* link_state, bool* duplex, icsneoc2_link_speed_t* link_speed, icsneoc2_link_mode_t* link_mode) {
+	if(!message) {
+		return icsneoc2_error_invalid_parameters;
+	}
+	auto msg = std::dynamic_pointer_cast<EthernetStatusMessage>(message->message);
+	if(!msg) {
+		return icsneoc2_error_invalid_type;
+	}
+	if(link_state) {
+		*link_state = msg->state;
+	}
+	if(duplex) {
+		*duplex = msg->duplex;
+	}
+	if(link_speed) {
+		*link_speed = static_cast<icsneoc2_link_speed_t>(msg->speed);
+	}
+	if(link_mode) {
+		*link_mode = static_cast<icsneoc2_link_mode_t>(msg->mode);
+	}
+	return icsneoc2_error_success;
+}

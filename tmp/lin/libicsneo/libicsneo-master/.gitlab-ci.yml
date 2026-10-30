@@ -1,0 +1,366 @@
+default:
+  interruptible: true
+
+variables:
+  DEBIAN_FRONTEND: noninteractive
+  LIBICSNEO_ICSPB_REPO: https://gitlab-ci-token:${CI_JOB_TOKEN}@${LIBICSNEO_ICSPB_GIT}
+
+stages:
+  - build
+  - unit_test
+  - deploy
+
+#-------------------------------------------------------------------------------
+# Windows
+#-------------------------------------------------------------------------------
+
+build windows/x64:
+  stage: build
+  script:
+    - cmd /C ci\build-windows64.bat
+  artifacts:
+    when: always
+    paths:
+      - build
+    expire_in: 3 days
+  tags:
+    - libicsneo-win-x64
+
+unit_test windows/x64:
+  stage: unit_test
+  script:
+    - build\libicsneo-unit-tests.exe
+  dependencies:
+    - build windows/x64
+  needs:
+    - build windows/x64
+  tags:
+    - libicsneo-win-x64
+  timeout: 5m
+
+#-------------------------------------------------------------------------------
+# Ubuntu
+#-------------------------------------------------------------------------------
+
+.build_linux_ubuntu_gcc: &build_linux_ubuntu_gcc
+  stage: build
+  script:
+    - apt update -y
+    - apt upgrade -y
+    - apt install -y g++ ninja-build cmake libpcap-dev git ca-certificates
+    - echo "$ICS_IPA_CA_CRT" >/usr/local/share/ca-certificates/ica-ipa-ca.crt
+    - update-ca-certificates --fresh
+    - sh ci/build-posix.sh
+  artifacts:
+    when: always
+    paths:
+      - build
+    expire_in: 3 days
+  tags:
+    - linux-build
+
+.test_linux_ubuntu_gcc: &test_linux_ubuntu_gcc
+  stage: unit_test
+  script:
+    - apt update -y
+    - apt upgrade -y
+    - apt install -y libpcap-dev
+    - build/libicsneo-unit-tests
+  tags:
+    - linux-build
+  timeout: 5m
+
+.build_linux_ubuntu_clang: &build_linux_ubuntu_clang
+  stage: build
+  script:
+    - apt update -y
+    - apt upgrade -y
+    - apt install -y clang lld ninja-build cmake libpcap-dev git ca-certificates
+    - echo "$ICS_IPA_CA_CRT" >/usr/local/share/ca-certificates/ica-ipa-ca.crt
+    - update-ca-certificates --fresh
+    - CC=clang CXX=clang++ LDFLAGS=-fuse-ld=lld sh ci/build-posix.sh
+  artifacts:
+    when: always
+    paths:
+      - build
+    expire_in: 3 days
+  tags:
+    - linux-build
+
+.test_linux_ubuntu_clang: &test_linux_ubuntu_clang
+  stage: unit_test
+  script:
+    - apt update -y
+    - apt upgrade -y
+    - apt install -y libpcap-dev
+    - build/libicsneo-unit-tests
+  tags:
+    - linux-build
+  timeout: 5m
+
+build linux/ubuntu/2404/amd64/gcc:
+  <<: *build_linux_ubuntu_gcc
+  image: ubuntu:24.04
+
+unit_test linux/ubuntu/2404/amd64/gcc:
+  <<: *test_linux_ubuntu_gcc
+  image: ubuntu:24.04
+  dependencies:
+    - build linux/ubuntu/2404/amd64/gcc
+  needs:
+    - build linux/ubuntu/2404/amd64/gcc
+
+build linux/ubuntu/2404/amd64/clang:
+  <<: *build_linux_ubuntu_clang
+  image: ubuntu:24.04
+
+unit_test linux/ubuntu/2404/amd64/clang:
+  <<: *test_linux_ubuntu_clang
+  image: ubuntu:24.04
+  dependencies:
+    - build linux/ubuntu/2404/amd64/clang
+  needs:
+    - build linux/ubuntu/2404/amd64/clang
+
+build linux/ubuntu/2604/amd64/gcc:
+  <<: *build_linux_ubuntu_gcc
+  image: ubuntu:26.04
+
+unit_test linux/ubuntu/2604/amd64/gcc:
+  <<: *test_linux_ubuntu_gcc
+  image: ubuntu:26.04
+  dependencies:
+    - build linux/ubuntu/2604/amd64/gcc
+  needs:
+    - build linux/ubuntu/2604/amd64/gcc
+
+build linux/ubuntu/2604/amd64/clang:
+  <<: *build_linux_ubuntu_clang
+  image: ubuntu:26.04
+
+unit_test linux/ubuntu/2604/amd64/clang:
+  <<: *test_linux_ubuntu_clang
+  image: ubuntu:26.04
+  dependencies:
+    - build linux/ubuntu/2604/amd64/clang
+  needs:
+    - build linux/ubuntu/2604/amd64/clang
+
+#-------------------------------------------------------------------------------
+# Fedora
+#-------------------------------------------------------------------------------
+
+.build_linux_fedora_gcc: &build_linux_fedora_gcc
+  stage: build
+  cache:
+    paths:
+      - /var/cache/dnf
+  script:
+    - echo max_parallel_downloads=10 >>/etc/dnf/dnf.conf
+    - echo fastestmirror=True >>/etc/dnf/dnf.conf
+    - dnf upgrade -y
+    - dnf install -y g++ libpcap-devel cmake ninja-build git ca-certificates
+    - echo "$ICS_IPA_CA_CRT" >/etc/pki/ca-trust/source/anchors/ica-ipa-ca.crt
+    - update-ca-trust
+    - sh ci/build-posix.sh
+  artifacts:
+    when: always
+    paths:
+      - build
+    expire_in: 3 days
+  tags:
+    - linux-build
+
+.test_linux_fedora_gcc: &test_linux_fedora_gcc
+  stage: unit_test
+  cache:
+    paths:
+      - /var/cache/dnf
+  script:
+    - echo max_parallel_downloads=10 >>/etc/dnf/dnf.conf
+    - echo fastestmirror=True >>/etc/dnf/dnf.conf
+    - dnf upgrade -y
+    - dnf install -y libpcap-devel
+    - build/libicsneo-unit-tests
+  tags:
+    - linux-build
+  timeout: 5m
+
+.build_linux_fedora_clang: &build_linux_fedora_clang
+  stage: build
+  cache:
+    paths:
+      - /var/cache/dnf
+  script:
+    - echo max_parallel_downloads=10 >>/etc/dnf/dnf.conf
+    - echo fastestmirror=True >>/etc/dnf/dnf.conf
+    - dnf upgrade -y
+    - dnf install -y clang lld libpcap-devel cmake ninja-build git ca-certificates
+    - echo "$ICS_IPA_CA_CRT" >/etc/pki/ca-trust/source/anchors/ica-ipa-ca.crt
+    - update-ca-trust
+    - CC=clang CXX=clang++ LDFLAGS=-fuse-ld=lld sh ci/build-posix.sh
+  artifacts:
+    when: always
+    paths:
+      - build
+    expire_in: 3 days
+  tags:
+    - linux-build
+
+.test_linux_fedora_clang: &test_linux_fedora_clang
+  stage: unit_test
+  cache:
+    paths:
+      - /var/cache/dnf
+  script:
+    - echo max_parallel_downloads=10 >>/etc/dnf/dnf.conf
+    - echo fastestmirror=True >>/etc/dnf/dnf.conf
+    - dnf upgrade -y
+    - dnf install -y libpcap-devel
+    - build/libicsneo-unit-tests
+  tags:
+    - linux-build
+  timeout: 5m
+
+build linux/fedora/43/amd64/gcc:
+  <<: *build_linux_fedora_gcc
+  image: fedora:43
+
+unit_test linux/fedora/43/amd64/gcc:
+  <<: *test_linux_fedora_gcc
+  image: fedora:43
+  dependencies:
+    - build linux/fedora/43/amd64/gcc
+  needs:
+    - build linux/fedora/43/amd64/gcc
+
+build linux/fedora/43/amd64/clang:
+  <<: *build_linux_fedora_clang
+  image: fedora:43
+
+unit_test linux/fedora/43/amd64/clang:
+  <<: *test_linux_fedora_clang
+  image: fedora:43
+  dependencies:
+    - build linux/fedora/43/amd64/clang
+  needs:
+    - build linux/fedora/43/amd64/clang
+
+build linux/fedora/44/amd64/gcc:
+  <<: *build_linux_fedora_gcc
+  image: fedora:44
+
+unit_test linux/fedora/44/amd64/gcc:
+  <<: *test_linux_fedora_gcc
+  image: fedora:44
+  dependencies:
+    - build linux/fedora/44/amd64/gcc
+  needs:
+    - build linux/fedora/44/amd64/gcc
+
+build linux/fedora/44/amd64/clang:
+  <<: *build_linux_fedora_clang
+  image: fedora:44
+
+unit_test linux/fedora/44/amd64/clang:
+  <<: *test_linux_fedora_clang
+  image: fedora:44
+  dependencies:
+    - build linux/fedora/44/amd64/clang
+  needs:
+    - build linux/fedora/44/amd64/clang
+
+#-------------------------------------------------------------------------------
+# Python Module
+#-------------------------------------------------------------------------------
+
+build python/linux/amd64:
+  stage: build
+  tags:
+    - linux-native-amd64
+  variables:
+    CIBW_ARCHS: x86_64
+  script:
+    - sh ci/build-wheel-linux.sh
+  artifacts:
+    paths:
+      - wheelhouse
+
+build python/linux/arm64:
+  stage: build
+  tags:
+    - arm64-linux-build
+  variables:
+    CIBW_ARCHS: aarch64
+  script:
+    - sh ci/build-wheel-linux.sh
+  artifacts:
+    paths:
+      - wheelhouse
+
+build python/macos:
+  stage: build
+  tags:
+    - macos-arm64
+  script:
+    - sh ci/build-wheel-macos.sh
+  artifacts:
+    paths:
+      - wheelhouse
+
+build python/windows:
+  stage: build
+  tags:
+    - libicsneo-win-x64
+  variables:
+    CIBW_ARCHS: AMD64
+    CIBW_ENVIRONMENT: CMAKE_GENERATOR=Ninja
+    SKBUILD_CMAKE_DEFINE: ICSPB_BOOTSTRAP_DIR=$CI_PROJECT_DIR/icspb
+  script:
+    - cmd /c ci\build-wheel-windows.bat
+  artifacts:
+    paths:
+      - wheelhouse
+
+deploy python/pypi:
+  stage: deploy
+  interruptible: false
+  variables:
+    TWINE_USERNAME: __token__
+    TWINE_PASSWORD: $PYPI_TOKEN
+  tags:
+    - linux-build
+  image: python:3.13
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  script:
+    - python3 -m pip install -U twine
+    - twine upload wheelhouse/*
+  dependencies:
+    - build python/linux/amd64
+    - build python/linux/arm64
+    - build python/macos
+    - build python/windows
+  needs:
+    - build python/linux/amd64
+    - build python/linux/arm64
+    - build python/macos
+    - build python/windows
+
+push github:
+  stage: deploy
+  interruptible: false
+  tags:
+    - linux-build
+  image: alpine:latest
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: delayed
+      start_in: 10 minutes
+  dependencies:
+    - deploy python/pypi
+  needs:
+    - deploy python/pypi
+  script:
+    - apk add git
+    - git push https://$LIBICSNEO_GITHUB_USERNAME:$LIBICSNEO_GITHUB_TOKEN@github.com/intrepidcs/libicsneo.git HEAD:master

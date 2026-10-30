@@ -1,0 +1,2 @@
+add_executable(libicsneocpp-livedata src/LiveDataExample.cpp)
+target_link_libraries(libicsneocpp-livedata icsneocpp)
