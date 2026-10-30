@@ -18,8 +18,8 @@ recorded timing, with Pause/Resume/Stop and highlighted rows. Line delay control
 highlight refresh only, preserving transmission timing. See
 [docs/file-viewer.md](docs/file-viewer.md) for log viewing and replay.
 Ethernet and LIN Python scripting are reserved for a later release. The PDF
-guides were updated October 29, 2026 for File Viewer, scripting, startup branding
-and the Intrepid timestamp correction.
+Install and User guides were updated October 30, 2026 for NI-XNET / USB-8502.
+The companion scripting guide retains the October 29 scripting release.
 
 See [Users Guide.pdf](Users%20Guide.pdf) for operation, UI reference, workflows,
 troubleshooting and model-specific connector maps, and [Install Guide.pdf](Install%20Guide.pdf)
@@ -40,6 +40,42 @@ Supported CAN backends (via [python-can](https://python-can.readthedocs.io/)):
 | PEAK PCAN (including PCAN-USB Pro FD) | `pcan` | PEAK drivers + PCAN-Basic API |
 | Vector | `vector` | Vector driver + XL Library; assign channels in Vector Hardware Config |
 | Intrepid ValueCAN / neoVI | `neovi` | Intrepid drivers; optional `pip install python-ics` |
+| NI USB-8502 (one or two ports) | `nixnet` | 64-bit NI-XNET driver + `.[nixnet]` Python extra |
+
+### NI USB-8502 / NI-XNET
+
+Install the NI-XNET Windows driver with NI MAX before connecting the USB-8502,
+following the NI installer prompts. Then, from this project's root:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -e ".[nixnet]"
+# To retain both optional vendor bindings:
+.\.venv\Scripts\python.exe -m pip install -e ".[intrepid,nixnet]"
+```
+
+Choose **NI (USB-8502 / NI-XNET)** in the CAN adapter list and **Refresh devices**.
+Detected entries identify model, serial, NI interface name and physical port.
+Use the exact NI MAX name, such as `CAN1` or `CAN2`, rather than a zero-based index;
+manual interface entry is supported. Classic CAN is the default. For CAN FD,
+enable **CAN FD** and match arbitration/data rates; select **FD frame** and
+optionally **BRS** for outgoing frames. The NI backend uses `fd_bitrate`.
+
+**NI internal termination (120 ohm)** defaults off and is selectable only before
+connection; it is disabled if the detected port cannot provide termination.
+Enable it only where the bench needs an end resistor. Close NI MAX Bus Monitor
+and other applications using that port before opening it here. The USB-8502 is
+USB-powered and does not require an external supply for CAN.
+
+The same monitoring, repeat TX, DBC, Python script and MF4 logging/replay paths
+are used as for the existing adapters. Only high-speed CAN/FD NI interfaces are
+enumerated; other NI-XNET hardware requires separate qualification. This does
+not add NI-CAN/USB-8473, NI LIN or NI Ethernet support. NI native sessions and
+conversion are mock tested; physical USB-8502 operation awaits bench testing.
+See the guides for wiring, NI MAX verification, diagnostics and acceptance steps.
+
+Run the complete suite, including NI mocks, with
+`.\.venv\Scripts\python.exe -m pytest tests -q` after installing `.[dev]`.
+NI driver installation is not required for the mocked tests.
 
 A separate LIN tab supports Monitor/Master/Slave sessions with Virtual LIN,
 **Intrepid ValueCAN4-2EL**, **Vector VN16xx / XL LIN** (including a VN1640 fitted

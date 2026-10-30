@@ -38,6 +38,9 @@ class ChannelOption:
 def discover_channels(interface):
     """Return selectable configurations and an actionable status message."""
     try:
+        if interface == "nixnet":
+            from signal_explorer.bus.ni import discover_ni_channels
+            return discover_ni_channels()
         if interface in {"kvaser", "pcan"}:
             if interface == "kvaser":
                 from can.interfaces.kvaser import canlib

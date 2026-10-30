@@ -26,7 +26,7 @@ def page(title,subtitle):
 def link(label,url):
     p(f'<link href="{url}" color="#126C79"><u>{label}</u></link>','SmallSE')
 
-page('Install guide','Signal Explorer | Windows source installation<br/>Version 0.1.0 - File Viewer and scripting release<br/>Document revision 1.2 - October 29, 2026')
+page('Install guide','Signal Explorer | Windows source installation<br/>Version 0.1.0 - NI-XNET / USB-8502 release<br/>Document revision 1.3 - October 30, 2026')
 p('This guide installs the current Python desktop application on another PC. A standalone installer will be addressed later. You need internet access for the initial Python package downloads and any required driver downloads.')
 h('1. Prepare the PC and project files')
 p('Install <b>64-bit Python 3.12</b> and its Python launcher. This is the version used on the development PC. The project declares Python 3.11 or later, but other versions have not been validated here.')
@@ -158,6 +158,26 @@ p('The app now anchors Intrepid CAN/LIN/Ethernet RX hardware intervals to host t
 h('Runtime versus documentation tooling')
 p('The tutorials use only Python\'s standard library and the existing app CAN API. No CAPL compiler, external editor, UDS library or CAN transport package is added. Full UDS/ISO-TP, LIN/Ethernet scripting and a standalone installer remain future work. reportlab and pypdf are needed only to regenerate the manuals, not to run Signal Explorer.','SmallSE')
 
+story.append(PageBreak())
+page('NI-XNET / USB-8502 setup','October 30, 2026 | One-port and two-port high-speed CAN / CAN FD')
+h('1. Install the NI software before USB connection')
+p('Use Windows x64 and the application\'s 64-bit Python environment. Obtain NI-XNET for your Windows version and USB-8502 from NI. Include NI Measurement &amp; Automation Explorer (MAX), follow the installer\'s connection prompts and restart if requested. The native driver is separate from the Python binding. NI-CAN, NI-DAQmx and LabVIEW are not needed for this backend.')
+link('NI-XNET driver download','https://www.ni.com/en/support/downloads/drivers/download.ni-xnet.html')
+h('2. Add the optional Python binding')
+p('Close Signal Explorer. From the project root, install the NI extra using the interpreter that launches the app:')
+code('.\\.venv\\Scripts\\python.exe -m pip install ".[nixnet]"\n# To include both optional vendor bindings:\n.\\.venv\\Scripts\\python.exe -m pip install ".[intrepid,nixnet]"')
+p('Use -e before the quoted package selector for editable development. Installing the binding does not install the NI-XNET Windows driver. Other adapters remain available without this optional extra.','SmallSE')
+h('3. Verify the adapter and select the correct port')
+p('Connect USB; the USB-8502 does not need external power for CAN. Locate it in NI MAX and note each CAN interface name (for example CAN1 or CAN2) and physical port. Use MAX Bus Monitor with a known-good peer and matching rates to verify RX; close that monitor and other sessions before opening this port in Signal Explorer.')
+p('In the CAN tab choose <b>NI (USB-8502 / NI-XNET)</b>, then <b>Refresh devices</b>. Select the detected model/serial/interface/port, or enter the exact NI MAX CAN name manually. Start with Classic CAN and a matching bitrate. <b>NI internal termination (120 ohm)</b> defaults off; enable only if this port needs an end resistor. It cannot be changed while connected.')
+h('4. Confirm Classic CAN, then CAN FD')
+p('Connect and check a known RX ID. Send eight known bytes and confirm them independently at the peer; local TX only confirms API acceptance. For FD, disconnect, enable CAN FD and match arbitration/data rates, reconnect, then select FD frame and BRS. Start with 500 kbit/s arbitration and 2 Mbit/s data if the peer supports them. USB-8502 revisions with TJA1043T are certified for FD data up to 5 Mbit/s; 8 Mbit/s is experimental. Verify your hardware revision.')
+p('The normal CAN trace, filters, DBC, repeat send, Python scripts, MF4 RX/TX recording and timed replay use this connection. First confirm bytes and timing at the peer. This release has mock coverage for NI enumeration, native frame conversion and MF4 recording; physical USB-8502 qualification remains pending.','SmallSE')
+h('Troubleshooting and scope')
+p('<b>Python API unavailable:</b> install .[nixnet] in this .venv. <b>Scan/DLL error:</b> install or repair 64-bit NI-XNET. <b>No channels:</b> check USB and NI MAX; Refresh. <b>Connect/rate failure:</b> check the exact CAN name, peer rates and competing sessions. <b>Bus-off:</b> stop TX, repair wiring/termination/peer ACK, then disconnect/reconnect.')
+p('USB-8473 / NI-CAN is excluded. Only high-speed/FD NI interfaces are enumerated; other NI-XNET models require separate qualification. No NI LIN, Ethernet or synchronization controls are added. See the updated User\'s Guide for the NI electrical profile, pinout revision differences and detailed bench checks.','SmallSE')
+link('NI Python requirements and installation','https://nixnet.readthedocs.io/en/stable/installation.html')
+
 def decorate(canvas,doc):
     w,h=letter
     canvas.setStrokeColor(colors.HexColor('#126C79'))
@@ -165,7 +185,7 @@ def decorate(canvas,doc):
     canvas.line(43,h-29,w-43,h-29)
     canvas.setFont('Helvetica',8)
     canvas.setFillColor(colors.HexColor('#446170'))
-    canvas.drawString(43,25,'SIGNAL EXPLORER  /  INSTALL GUIDE  /  REV 1.2  /  OCT 29, 2026')
+    canvas.drawString(43,25,'SIGNAL EXPLORER  /  INSTALL GUIDE  /  REV 1.3  /  OCT 30, 2026')
     canvas.drawRightString(w-43,25,str(doc.page))
 
 doc=SimpleDocTemplate(str(output),pagesize=letter,rightMargin=43,leftMargin=43,topMargin=46,bottomMargin=43,title='Install guide - Signal Explorer',author='Signal Explorer')
@@ -176,4 +196,4 @@ print('Pages:',len(r.pages))
 for i,page in enumerate(r.pages,1):
     text=page.extract_text()
     print(i, len(text),text[:60].replace('\n',' '))
-assert len(r.pages)==7, 'Unexpected pagination; inspect layout'
+assert len(r.pages)==8, 'Unexpected pagination; inspect layout'

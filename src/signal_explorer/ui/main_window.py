@@ -90,6 +90,10 @@ class MainWindow(QMainWindow):
         self._bitrate.setCurrentIndex(2)  # 500 k
 
         self._fd = QCheckBox("CAN FD")
+        self._termination = QCheckBox("NI internal termination (120 ohm)")
+        self._termination.setToolTip("Enable only when this NI port is at a bus end and needs termination. Default: off.")
+        self._channel.currentIndexChanged.connect(self._sync_ni_controls)
+        self._channel.editTextChanged.connect(self._sync_ni_controls)
         self._data_bitrate = QComboBox()
         for rate in DATA_BITRATES:
             self._data_bitrate.addItem(f"{rate / 1000000:g} Mbit/s", rate)
@@ -150,6 +154,7 @@ class MainWindow(QMainWindow):
         fd_bar.addWidget(self._fd)
         fd_bar.addWidget(QLabel("Data bitrate (FD)"))
         fd_bar.addWidget(self._data_bitrate)
+        fd_bar.addWidget(self._termination)
         fd_bar.addWidget(QLabel("Bitrate above is the arbitration rate. Virtual mode simulates frames, not physical bus timing."))
         fd_bar.addStretch()
         root.addLayout(fd_bar)
@@ -300,7 +305,7 @@ class MainWindow(QMainWindow):
                 self._channel.setEditText(preferred)
             else:
                 self._channel.setCurrentIndex(match)
-        elif spec.interface in {"vector", "neovi", "kvaser", "pcan"}:
+        elif spec.interface in {"vector", "neovi", "kvaser", "pcan", "nixnet"}:
             options, self._discovery_note = discover_channels(spec.interface)
             for option in options:
                 self._channel.addItem(option.label, option.config)
@@ -329,6 +334,17 @@ class MainWindow(QMainWindow):
         if spec.interface not in FD_INTERFACES:
             self._fd.setChecked(False)
         self._sync_fd_controls()
+        self._sync_ni_controls()
+
+    def _sync_ni_controls(self, *_):
+        ni = self._current_backend().interface == "nixnet"
+        self._termination.setVisible(ni)
+        selected = self._channel.currentData()
+        detected = isinstance(selected, dict) and self._channel.currentText() == self._channel.itemText(self._channel.currentIndex())
+        available = not detected or selected.get("can_term_available", True)
+        if not ni or not available:
+            self._termination.setChecked(False)
+        self._termination.setEnabled(ni and available and not self._service.is_connected)
 
     def _toggle_connection(self) -> None:
         if self._service.is_connected:
@@ -343,10 +359,13 @@ class MainWindow(QMainWindow):
         inject = self._demo.isChecked() and spec.interface == "virtual"
         selected = self._channel.currentData()
         config = selected if isinstance(selected, dict) and self._channel.currentText() == self._channel.itemText(self._channel.currentIndex()) else None
+        if spec.interface == "nixnet":
+            config = dict(config or {}, can_termination=self._termination.isChecked())
         self._service.connect_bus(spec, channel, bitrate, inject, device_config=config,
                                   fd=self._fd.isChecked(), data_bitrate=int(self._data_bitrate.currentData()))
 
     def _on_connected(self, label: str) -> None:
+        self._sync_ni_controls()
         self._explore.setEnabled(True)
         self._set_exploring(True)
         self._refresh.setEnabled(False)

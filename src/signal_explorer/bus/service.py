@@ -93,6 +93,8 @@ class BusService(QObject):
                 if key in device_config:
                     kwargs[key] = device_config[key]
         kwargs["receive_own_messages"] = False
+        if backend.interface == "nixnet":
+            kwargs["can_termination"] = bool((device_config or {}).get("can_termination", False))
         kwargs["ignore_config"] = True
         if backend.interface == "vector":
             prepare_vector_library()
@@ -104,6 +106,9 @@ class BusService(QObject):
             kwargs.setdefault("tty_baudrate", 115200)
 
         try:
+            if (backend.interface == "nixnet" and kwargs["can_termination"]
+                    and (device_config or {}).get("can_term_available") is False):
+                raise ValueError("The selected NI channel has no internal termination. Use external termination.")
             if fd:
                 if device_config and device_config.get("supports_fd") is False:
                     raise ValueError("The selected channel does not support CAN FD.")
@@ -116,7 +121,10 @@ class BusService(QObject):
             if self._device_lease:
                 self._device_lease.release()
                 self._device_lease = None
-            self.error.emit(f"Connect failed ({backend.label}): {exc}")
+            hint = (' Check the nixnet Python extra, the 64-bit NI-XNET driver, '
+                    'and the exact CAN interface name in NI MAX; close other bus sessions.'
+                    if backend.interface == 'nixnet' else '')
+            self.error.emit(f"Connect failed ({backend.label}): {exc}{hint}")
             return
 
         self.fd_enabled = fd
@@ -126,6 +134,8 @@ class BusService(QObject):
                                  native_channel=str(self._channel), bitrate=bitrate, fd=fd,
                                  data_bitrate=data_bitrate if fd else None,
                                  serial=(device_config or {}).get("serial"))
+        if backend.interface == "nixnet":
+            self.session_info["can_termination"] = kwargs["can_termination"]
         if self._rx_clock is not None:
             self.session_info['timestamp_source'] = 'Hardware intervals anchored to host time at first RX'
         self._reader = _Reader(self._bus, self._capture_received)
@@ -240,7 +250,7 @@ class BusService(QObject):
 
 
 def _typed_channel(interface: str, channel: str) -> str | int:
-    if interface in {"slcan", "virtual"}:
+    if interface in {"slcan", "virtual", "nixnet"}:
         return channel
     try:
         return int(channel)

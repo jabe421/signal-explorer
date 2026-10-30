@@ -22,6 +22,7 @@ dependencies = [
 
 [project.optional-dependencies]
 intrepid = ["python-ics", "filelock"]
+nixnet = ["nixnet>=1.0,<2"]
 dev = ["pytest>=8.0"]
 
 [project.scripts]

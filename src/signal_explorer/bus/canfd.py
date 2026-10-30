@@ -1,7 +1,7 @@
 """CAN FD policy shared by the connection service and message editor."""
 import can
 
-FD_INTERFACES = {"virtual", "vector", "kvaser", "neovi", "pcan"}
+FD_INTERFACES = {"virtual", "vector", "kvaser", "neovi", "pcan", "nixnet"}
 FD_LENGTHS = (*range(9), 12, 16, 20, 24, 32, 48, 64)
 DATA_BITRATES = (500000, 1000000, 2000000, 4000000, 5000000, 8000000)
 
@@ -13,6 +13,8 @@ def fd_configuration(interface, bitrate, data_bitrate):
         raise ValueError("Data bitrate must be at least the arbitration bitrate.")
     if interface == "virtual":
         return {"protocol": can.CanProtocol.CAN_FD}
+    if interface == "nixnet":
+        return {"fd": True, "fd_bitrate": data_bitrate}
     if interface == "pcan":
         # PCAN requires explicit timing, not just a data_bitrate argument.
         timing = can.BitTimingFd.from_sample_point(

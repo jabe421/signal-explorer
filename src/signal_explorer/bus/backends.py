@@ -72,6 +72,13 @@ BACKENDS: tuple[BackendSpec, ...] = (
         default_channel="1",
         notes="Uses Intrepid native API, not its COM port. HSCAN is CAN1; HSCAN2 is CAN2 on ValueCAN4-2. Requires the intrepid optional dependency.",
     ),
+    BackendSpec(
+        key="nixnet",
+        label="NI (USB-8502 / NI-XNET)",
+        interface="nixnet",
+        default_channel="CAN1",
+        notes="Requires the 64-bit NI-XNET driver and the nixnet optional dependency. Select an NI MAX CAN interface (CAN1, CAN2, etc.). Internal termination is off by default. USB-8473 / NI-CAN is not supported.",
+    ),
 )
 
 BITRATES = (125000, 250000, 500000, 1000000)

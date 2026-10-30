@@ -93,9 +93,9 @@ p('CAN / CAN FD, LIN and Ethernet desktop workbench','Centered')
 story.append(Spacer(1,22))
 figure('can.png','Figure 1: Signal Explorer running virtual CAN FD traffic with the demo DBC.')
 story.append(Spacer(1,16))
-p('Application version 0.1.0 - File Viewer and scripting release<br/>Document revision 1.2 - October 29, 2026','Centered')
+p('Application version 0.1.0 - NI-XNET / USB-8502 release<br/>Document revision 1.3 - October 30, 2026','Centered')
 note('This guide describes the current source build. Hardware driver integration is not a physical-bus qualification. '
-     'Native LIN and ValueCAN Ethernet await powered bench verification. Passive PC Ethernet capture has been checked. '
+     'NI-XNET USB-8502, native LIN and ValueCAN Ethernet await powered bench verification. Passive PC Ethernet capture has been checked. '
      'Ethernet TX is implemented but awaits physical testing. SENT, CAN XL, signal plotting and installers are not implemented.')
 p('Read this guide alongside Install guide.pdf. Install guide covers deployment; this manual covers operation, hardware selection, verification and recovery.','Small')
 
@@ -103,19 +103,19 @@ p('Read this guide alongside Install guide.pdf. Install guide covers deployment;
 page('Contents and document scope','contents')
 table(['Section','Pages','Use it for'],[
     ['<link href="#release_today">October 29 release changes</link>',page_range('release_today'),'File Viewer, scripts, demo echo, branding and timestamp correction.'],
-    ['<link href="#s1">1. System prerequisites &amp; hardware profile</link>',page_range('s1','hardware'),'PC requirements, rates, FD, isolation and support scope.'],
+    ['<link href="#s1">1. System prerequisites &amp; hardware profile</link>',page_range('s1','ni_profile'),'PC requirements, rates, FD, isolation and NI-XNET scope.'],
     ['<link href="#s2">2. Mandatory driver/software setup</link>',page_range('s2'),'Preparation before USB or bus connection; Npcap.'],
-    ['<link href="#s3">3. Connection &amp; verification</link>',page_range('s3','ethernet_verify'),'CAN, LIN and Ethernet simulation/hardware checks.'],
+    ['<link href="#s3">3. Connection &amp; verification</link>',page_range('s3','ni_verify'),'CAN, NI USB-8502, LIN and Ethernet checks.'],
     ['<link href="#s4">4. Graphical interface reference map</link>',page_range('s4','file_viewer_log'),'Every current column and control, with screenshots.'],
     ['<link href="#s5">5. Practical workflows</link>',page_range('s5','scripting_workflow'),'DBC/LDF, sending, Ethernet tests, MF4 capture/replay.'],
     ['<link href="#s6">6. Troubleshooting &amp; fault codes</link>',page_range('s6','timestamp_faults'),'CAN/LIN/Ethernet faults, driver errors and recovery.'],
-    ['<link href="#s7">7. Appendix: adapter pinouts</link>',page_range('s7','ethernet_pins'),'CANable, Kvaser, PEAK, Vector, Intrepid and Ethernet.'],
+    ['<link href="#s7">7. Appendix: adapter pinouts</link>',page_range('s7','ethernet_pins'),'CANable, Kvaser, PEAK, Vector, Intrepid, NI and Ethernet.'],
     ['<link href="#cli">7. Appendix: command line and sources</link>',page_range('cli','revision'),'Launch commands, environment settings and source register.'],
 ], [2.7,.7,3.8], 'Navigation for this edition.')
 h('How to read the support statements')
 p('<b>Implemented</b> means there is an application code path. <b>Mock tested</b> means API behavior was checked without electrical traffic. '
   '<b>Physically observed</b> means the specific observation stated was made; it does not imply all rates, adapters or features are qualified.')
-p('This release has 145 passing automated tests. Existing CANable reception is distinct from native LIN/Ethernet mock coverage. '
+p('This release has 156 passing automated tests, including NI-XNET mocks. Existing CANable reception is distinct from native driver mock coverage. '
   'ValueCAN4-2EL VE0245 and five PC Ethernet interfaces were discovered on the development PC. Passive capture on its active Ethernet port worked; '
   'no application-generated physical Ethernet TX or powered ValueCAN Ethernet/LIN verification was performed.')
 h('Manual conventions')
@@ -178,6 +178,19 @@ table(['Adapter / family','Application support','Hardware profile / isolation'],
 p('Native LIN for Vector, Intrepid and PEAK has mock coverage; powered timing, response removal, error reporting and interoperability still need bench qualification. '
   'Kvaser U100-C and PEAK hardware were not available for physical tests. Other devices accepted by a generic vendor backend require their own manual and validation.','Small')
 
+page('1.5 NI USB-8502 hardware profile','ni_profile')
+p('The NI (USB-8502 / NI-XNET) CAN backend supports the one-port and two-port USB-8502 high-speed CAN / CAN FD variants. It uses NI-XNET frame streams through python-can. NI-CAN and the older USB-8473 family are excluded.')
+table(['Item','Profile / application behavior'],[
+    ['Device and power','USB-8502: one or two 9-pin male D-Sub CAN ports. USB supplies the device; external CAN transceiver power is not needed. The optional three-pin connector on the two-port unit is for synchronization, not a LIN channel. [N1,N2]'],
+    ['Selectable rates','Arbitration: 125, 250, 500 or 1000 kbit/s. FD data: 0.5, 1, 2, 4, 5 or 8 Mbit/s, subject to driver/hardware acceptance. Start at 500 kbit/s / 2 Mbit/s.'],
+    ['Vendor physical limits','NI lists 1 Mbit/s arbitration and a TJA1043T transceiver certified for FD data up to 5 Mbit/s; 8 Mbit/s is experimental for that revision. Newer hardware revisions can differ. An app menu choice does not qualify a bus. [N3]'],
+    ['Termination','Switchable nominal 120-ohm internal resistor. NI internal termination defaults off. Enable before connecting only when this port needs an end resistor. Discovery disables the control for a port without this capability. [N3]'],
+    ['Isolation','NI specifies isolation between ports on the two-port model and between CAN and USB. Continuous port-to-earth rating: 60 VDC, Category I. COM is isolated from USB ground; this is not UL safety isolation. [N3]'],
+    ['Integrated features','RX and local TX trace, once/repeated TX, filters, DBC decoding, Python CAN scripts, MF4 logging and timed replay use the shared CAN service. No NI LIN, Ethernet or synchronization configuration is added.'],
+], [1.35,4.8], 'USB-8502 integration and electrical profile.')
+note('NI-XNET interfaces with a high-speed/FD transceiver are discoverable. The USB-8502 is the target device family; other NI models require their own capability checks and bench qualification. Mock coverage does not establish physical traffic, rate or timing performance.')
+source('[N1] NI USB-8502 product page; [N2] Quick Start 376701A; [N3] NI USB-8502 Specifications (updated June 23, 2025). Links accompany the NI pinout appendix.')
+
 # 5 ---------------------------------------------------------------------------
 page('2 Mandatory driver/software setup','s2')
 h('2.1 Before plugging the adapter or bus in')
@@ -195,6 +208,7 @@ table(['Backend','Required software before connection'],[
     ['Kvaser CAN','Kvaser Windows drivers with CANlib runtime. Both U100-C and Leaf Light R v2 use CANlib; a CANlib virtual channel is not physical hardware.'],
     ['PEAK CAN','PEAK driver and 64-bit PCAN-Basic API (PCANBasic.dll).'],
     ['PEAK LIN','PEAK LIN driver, PLIN Manager service and PLIN-API (PLinApi.dll). PCAN-Basic alone cannot supply LIN.'],
+    ['NI USB-8502 CAN/FD','64-bit NI-XNET Windows driver and NI MAX; install the [nixnet] Python extra. NI-CAN, NI-DAQmx and LabVIEW are not required. See section 3.6.'],
 ], [1.4,4.7], 'Optional vendor components are independent.')
 note('Signal Explorer does not update adapter firmware. Record the installed driver/firmware versions before changing them and use the vendor\'s update utility if required.')
 
@@ -259,11 +273,26 @@ p('PC direction is inferred from the selected NIC source MAC and includes other 
 note('Native hardware never receives the simulator\'s automatic demo traffic or ACK replies. Send, repeated send and playback transmit on the selected physical port. '
      'No PC IP-address changes, DoIP activation-line control or automatic ARP/IP stack are provided.')
 
+page('3.6 NI-XNET connection & verification','ni_verify')
+h('Install before connecting USB')
+p('Install NI-XNET for Windows with support for your Windows version and USB-8502. Include NI Measurement &amp; Automation Explorer (MAX), follow installer prompts and restart if requested. The NI Python binding is separate from the native driver; install it into the application environment:')
+code('.\\.venv\\Scripts\\python.exe -m pip install -e ".[nixnet]"\n# Both optional vendor bindings:\n.\\.venv\\Scripts\\python.exe -m pip install -e ".[intrepid,nixnet]"')
+h('Verify in NI MAX, then connect in Signal Explorer')
+steps(['Connect USB. In NI MAX, locate the USB-8502 and note the exact CAN interface names and physical ports. Names such as CAN1 and CAN2 are assigned by NI; do not assume Port 1 is always CAN1.',
+       'Use NI MAX Bus Monitor with a known-good peer and matching rates to confirm RX, as described in the NI Quick Start. Close Bus Monitor and any other session using that port before opening Signal Explorer.',
+       'Select <b>NI (USB-8502 / NI-XNET)</b> in the CAN adapter dropdown and <b>Refresh devices</b>. Choose model/serial/interface/port. A manual channel entry must match NI MAX exactly.',
+       'Start with Classic CAN and the peer bitrate. Set <b>NI internal termination (120 ohm)</b> only if this port needs an end resistor. Connect; monitoring starts. A silent bus produces no demo frames on hardware.',
+       'Confirm a known RX ID and bytes. Send a standard ID with eight known bytes, then confirm it at the peer. Test a 100-ms repeat and Stop. Local TX means the driver accepted a frame; it does not prove on-wire ACK or peer reception.',
+       'For FD, Disconnect, enable CAN FD, match arbitration/data rates and reconnect. Select FD frame, BRS and a 12-byte payload; verify it at an FD-capable peer. Save RX/TX to MF4, reopen it and check direction, bytes and timing before physical replay.'])
+h('Diagnostics and acceptance status')
+p('<b>Python API unavailable:</b> install .[nixnet] with the same .venv interpreter. <b>Scan failed / DLL missing:</b> repair the 64-bit NI-XNET runtime. <b>No channels:</b> verify USB and NI MAX, then Refresh. <b>Connect failed:</b> check the interface name, rates, termination and competing sessions.')
+p('For bus-off or repeated errors, stop TX, check wiring, two bus-end resistors, reference ground, peer ACK and both FD rates, then Disconnect/reconnect. There is no NI-specific controller-reset button. Automated NI discovery/native conversion and MF4 checks use mocks; physical USB-8502 acceptance is pending.','Small')
+
 page('4 Graphical interface reference map','s4')
 figure('can.png','Figure 2: CAN/CAN FD view. Demo traffic and decoded values are synthetic.')
 table(['Region','What it contains'],[
     ['A. Above protocol tabs','Adapter, Channel, Bitrate, Inject demo traffic, Connect/Disconnect, Clear, Start/Pause Exploring, Refresh devices and the conditional Vector DLL control.'],
-    ['B. Below CAN tab','CAN FD/data bitrate, driver notes, filter field, DBC controls and Auto-scroll.'],
+    ['B. Below CAN tab','CAN FD/data bitrate, conditional NI internal termination, driver notes, filter field, DBC controls and Auto-scroll.'],
     ['C. Central trace','Timestamped history or fixed latest-value rows. Resize column boundaries to reveal long Data or Signals fields. Horizontal scroll exposes FD/BRS/ESI.'],
     ['D. Under trace','Outgoing message ID, Extended ID, FD frame, BRS, data, interval and Send/Stop.'],
     ['E. Recording area / bottom','Logging/save/playback, recorded-bus and direction selectors, logger/playback status and CAN RX/TX/visible-row counts.'],
@@ -650,7 +679,28 @@ note('Unlike the dedicated OBD-II 2EL cable, the MULTI OBD-II branch does not ca
      'Use its DB25 CAN branch and DB9 LIN branch. Check continuity with power disconnected if a custom harness or pin-remapping option is present.')
 
 # 22 --------------------------------------------------------------------------
-page('7.7 Ethernet connector reference','ethernet_pins')
+page('7.7 NI USB-8502 connector reference','ni_pins')
+p('Use molded pin numbers on each 9-pin male D-Sub. Port 1 and Port 2 use the same map. The current NI specification and the older Quick Start differ on optional pins, so consult the exact hardware revision before wiring unused positions.')
+table(['Pin','NI specifications, updated June 2025','Quick Start 376701A, December 2016'],[
+    ['1','NC','NC'], ['2','CAN_L','CAN_L'], ['3','V-: CAN reference ground','COM'],
+    ['4','NC','NC'], ['5','Optional shield','NC'], ['6','Optional COM reference ground','COM'],
+    ['7','CAN_H','CAN_H'], ['8','NC','NC'], ['9','Optional V+ / Ext_Vbat assignment','NC'],
+], [.5,2.7,2.8], 'NI USB-8502 pin assignments from two NI publications. [N2,N3]')
+note('For normal USB-8502 CAN wiring, use CAN_H (7), CAN_L (2) and the CAN-side reference (3). USB powers the interface. Do not apply supply voltage to pin 9 based on a generic CAN cable convention; the older USB-8502 Quick Start marks it NC. Confirm the matching revision and harness before using optional assignments.')
+h('Termination and bench wiring')
+p('Provide a 120-ohm resistor at each physical end of a high-speed CAN bus. The NI checkbox controls only this NI port\'s resistor; it does not detect or configure other nodes. An unpowered, isolated bus with two end resistors normally measures about 60 ohms between CAN_H and CAN_L. Ground/reference wiring must respect the ECU and interface manuals.')
+p('The two-port model\'s separate COMBICON connector is labeled GND, T0 and T1 for clock/trigger synchronization. It is not the CAN connector, LIN, a power input for this workflow or the isolated CAN COM. Signal Explorer does not configure those synchronization signals. [N1,N2]')
+h('NI references')
+for key,label,url in [
+    ('N1','NI USB-8502 product profile','https://www.ni.com/en/shop/hardware/can/model-usb-8502'),
+    ('N2','NI USB-8502 Quick Start 376701A','https://docs-be.ni.com/bundle/usb-8502-getting-started/raw/resource/enus/376701a.pdf'),
+    ('N3','NI USB-8502 Specifications','https://www.ni.com/docs/en-US/bundle/usb-8502-specs/page/specs.html'),
+    ('N4','NI Python binding installation','https://nixnet.readthedocs.io/en/stable/installation.html'),
+    ('N5','python-can NI-XNET backend','https://python-can.readthedocs.io/en/stable/interfaces/nixnet.html'),
+]:
+    p(f'<b>[{key}]</b> <link href="{escape(url)}" color="#124b6a"><u>{label}</u></link>','Small')
+
+page('7.8 Ethernet connector reference','ethernet_pins')
 h('PC Ethernet: conventional 8P8C / RJ45 interface')
 p('Follow the jack/cable manufacturer\'s pin numbering; latch-side and contact-side views are different. The table is the conventional MDI signal assignment, '
   'not a promise about fixed TX/RX direction on auto-MDI-X hardware. Ethernet is not a D-Sub interface. [E3]')
@@ -671,7 +721,7 @@ p('Use the approved Intrepid Ethernet breakout for the actual DB26/OBD/MULTI cab
 p('The ValueCAN4-2EL PHY is conventional 10/100 Ethernet. Automotive 100BASE-T1 requires an appropriate converter, such as the vendor\'s RAD-Moon accessory; '
   'a passive RJ45-to-single-pair cable is not a PHY converter. No native 100BASE-T1 PC adapter backend is supplied. [H2]')
 
-page('7.8 Command line and configuration','cli')
+page('7.9 Command line and configuration','cli')
 h('Launch commands')
 code('cd "C:\\Tools\\Signal Explorer"\n.\\.venv\\Scripts\\python.exe -m signal_explorer')
 p('The installed console entry point is also <b>signal-explorer</b> when the virtual environment Scripts folder is on PATH. '
@@ -697,7 +747,7 @@ p('Regenerate this guide with docs/build_users_guide.py using Python with report
   'Recheck source and vendor revisions after software, hardware, firmware or cable changes.','Small')
 
 # 23 --------------------------------------------------------------------------
-page('7.9 Source register','sources')
+page('7.10 Source register','sources')
 p('Existing CAN/LIN sources were checked October 25, 2026; Ethernet additions were checked October 26, 2026. '
   'Match the serial, hardware revision and cable/piggy to the cited map. Test-voltage ratings are not interchangeable working-voltage ratings.')
 refs=[
@@ -727,15 +777,16 @@ p('<b>[H8]</b> User-supplied Kvaser Leaf Light R v2 User\'s Guide, revision 3.10
   '<i>kvaser_leaf_light_r_v2_usersguide_3_10_261007.pdf</i>. This is also the formatting reference. Its specification table gives galvanic isolation without a numerical voltage rating.','Small')
 p('Vector\'s official CDN rejected the local download during preparation. Vector-authored manual text was checked via an indexed manual mirror; '
   'for current revision details, use the official manual/Hardware Manager before wiring. Conditional piggy tables are examples and do not identify the user\'s two uninspected LIN piggies.','Small')
-page('7.10 Revision history and validation','revision')
+page('7.11 Revision history and validation','revision')
 table(['Revision / date','Change'],[
+    ['1.3 / October 30, 2026','NI-XNET USB-8502 Classic/FD integration, interface discovery and internal termination control; driver setup, NI MAX checks, electrical profile, pinouts and mock-test acceptance scope. NI-CAN excluded.'],
     ['1.0 / October 25, 2026','Initial CAN/FD/LIN guide, workflows, fault recovery, adapter pinouts and CLI.'],
     ['1.1 / October 26, 2026','Ethernet simulation, PC Npcap and ValueCAN4-2EL: installation, discovery, GUI map, sending/filtering, MF4/replay, diagnostics, connectors and validation scope.'],
     ['1.2 / October 29, 2026','Python editor/runner and CAN API; continuous 321/221 demo; File Viewer and read-only timed MF4 replay; SE icon/splash; Intrepid clock alignment and replay discontinuity/timeout fixes. Companion Scripting User\'s Guide and nine source examples added.'],
 ], [1.7,4.4], 'Document revision, independent of the application version.')
 p('Signal Explorer is the application name used here. Vendor names identify supported interfaces and source documents; this guide does not imply vendor endorsement, product certification or independent ASAM conformance certification.','Small')
 h('Validation for this edition')
-p('145 automated tests cover the existing protocols, editor controls, pause/stop, replay direction/timing, log loading, timestamp alignment and the documented script examples. '
+p('156 automated tests cover the existing protocols, NI-XNET discovery/native session conversion and MF4 RX/TX, editor controls, pause/stop, replay direction/timing, log loading, timestamp alignment and the documented script examples. '
   'Five examples run against built-in virtual traffic; four MCU templates run against a private mock firmware peer after enabling their contract flag in the test harness. '
   'The default MCU templates are also checked to reject transmission before configuration. Native electrical qualification remains outside these tests.')
 p('The source code, docs/scripting.md, docs/file-viewer.md, examples/scripts/mcu/ and tests/test_scripting_examples.py define the October 29 behavior. '
@@ -757,7 +808,7 @@ def decorate(canvas,doc):
         canvas.line(52,H-41,W-52,H-41)
     canvas.line(52,40,W-52,40)
     canvas.setFont('Helvetica',8)
-    canvas.drawString(52,26,'SIGNAL EXPLORER  |  Revision 1.2  |  October 29, 2026')
+    canvas.drawString(52,26,'SIGNAL EXPLORER  |  Revision 1.3  |  October 30, 2026')
     canvas.drawRightString(W-52,26,str(doc.page))
     canvas.restoreState()
 
@@ -776,4 +827,4 @@ if __name__=='__main__':
         print(f'{i:02} {len(text):4} {title}')
         assert title.replace('&','&') in text.replace('\n',' '),f'Unexpected pagination on page {i}: {title}'
     assert len(reader.pages)==len(pages),'Unexpected overflow page: inspect and adjust layout.'
-    assert len(reader.pages)==35
+    assert len(reader.pages)==38
