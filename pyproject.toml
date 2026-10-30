@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "signal-explorer"
+version = "0.1.0"
+description = "Open-source multi-adapter bus explorer with CAN/CAN FD, LIN, Ethernet adapters and simulation."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Signal Explorer contributors" }]
+dependencies = [
+    "PySide6-Essentials>=6.7",
+    "python-can[mf4]>=4.6.1,<5",
+    "asammdf>=8.8,<9",
+    "pyserial>=3.5",
+    "cantools>=39",
+    "uptime>=3.0.1",
+    "ldfparser>=0.26,<0.27",
+]
+
+[project.optional-dependencies]
+intrepid = ["python-ics", "filelock"]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+signal-explorer = "signal_explorer.app:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"signal_explorer" = ["assets/*.ico", "assets/*.png"]
+"signal_explorer.lin" = ["*.ldf"]
