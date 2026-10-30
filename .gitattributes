@@ -1,0 +1,3 @@
+# Preserve document/image bytes on Windows; PDF offsets depend on exact bytes.
+*.pdf binary
+*.png binary
