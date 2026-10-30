@@ -14,7 +14,7 @@ from reportlab.lib.pagesizes import A4
 from pypdf import PdfReader
 
 ROOT=Path(__file__).resolve().parents[1]
-OUT=ROOT/'users guide.pdf'
+OUT=ROOT/'Users Guide.pdf'
 ASSETS=Path(__file__).parent/'user_guide_assets'
 W,H=A4
 WIDTH=W-104
@@ -675,7 +675,7 @@ page('7.8 Command line and configuration','cli')
 h('Launch commands')
 code('cd "C:\\Tools\\Signal Explorer"\n.\\.venv\\Scripts\\python.exe -m signal_explorer')
 p('The installed console entry point is also <b>signal-explorer</b> when the virtual environment Scripts folder is on PATH. '
-  'SignalExplorer.bat in this project contains a development-PC path; inspect/update it on another PC.')
+  'SignalExplorer.bat resolves its own folder and uses its local .venv interpreter; no PC-specific launcher path is needed.')
 h('Application arguments: none implemented')
 p('There is no application argument parser. Do not use invented options such as --adapter, --channel, --bitrate, --dbc, --log or --replay. '
   'Select those settings in the GUI. QApplication receives sys.argv and may process its own Qt options; those are not Signal Explorer connection features.')

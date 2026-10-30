@@ -1,10 +1,12 @@
 @echo off
 title Signal Explorer
 
-cd /d "C:\Users\Jabe\Documents\Signal Explorer"
-
-call ".venv\Scripts\activate.bat"
-
-python -m signal_explorer
+cd /d "%~dp0"
+if not exist ".venv\Scripts\python.exe" (
+    echo Python environment not found. Follow the Install Guide to create .venv.
+    pause
+    exit /b 1
+)
+".venv\Scripts\python.exe" -m signal_explorer
 
 pause

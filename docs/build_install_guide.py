@@ -8,7 +8,7 @@ from reportlab.lib.pagesizes import letter
 from pypdf import PdfReader
 
 root = Path(__file__).resolve().parents[1]
-output = root / 'Install guide.pdf'
+output = root / 'Install Guide.pdf'
 styles = getSampleStyleSheet()
 styles.add(ParagraphStyle(name='TitleSE', fontName='Helvetica-Bold', fontSize=26, leading=29, textColor=colors.HexColor('#123148'), spaceAfter=12))
 styles.add(ParagraphStyle(name='SubSE', fontName='Helvetica', fontSize=12, leading=17, textColor=colors.HexColor('#446170'), spaceAfter=12))
@@ -38,7 +38,7 @@ code('cd "C:\\Tools\\Signal Explorer"\npy -3.12 -m venv .venv\n.\\.venv\\Scripts
 p('Using the virtual environment executable directly avoids the need to activate it or change PowerShell script-execution settings.')
 h('3. Launch Signal Explorer')
 code('.\\.venv\\Scripts\\python.exe -m signal_explorer')
-p('Run this command from the project root whenever you want to start the application. The existing SignalExplorer.bat contains the development PC\'s absolute path; update that path before using it elsewhere.','SmallSE')
+p('Run this command from the project root whenever you want to start the application. SignalExplorer.bat resolves its own folder and launches that folder\'s .venv interpreter; it does not require activation or a hard-coded PC path.','SmallSE')
 h('Packages installed automatically')
 p('<b>PySide6-Essentials</b> - desktop UI; <b>python-can</b> - CAN interfaces; <b>pyserial</b> - serial adapters; <b>cantools</b> - DBC decoding; <b>ldfparser</b> - LIN descriptions; <b>uptime</b> - timestamp support; <b>asammdf</b> via python-can[mf4] - ASAM MDF4 recording and playback. pip also installs dependencies such as NumPy and pandas. Build tooling includes setuptools. These are application dependencies, separate from vendor hardware drivers.')
 

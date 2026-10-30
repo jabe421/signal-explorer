@@ -21,8 +21,8 @@ Ethernet and LIN Python scripting are reserved for a later release. The PDF
 guides were updated October 29, 2026 for File Viewer, scripting, startup branding
 and the Intrepid timestamp correction.
 
-See [users guide.pdf](users%20guide.pdf) for operation, UI reference, workflows,
-troubleshooting and model-specific connector maps, and [Install guide.pdf](Install%20guide.pdf)
+See [Users Guide.pdf](Users%20Guide.pdf) for operation, UI reference, workflows,
+troubleshooting and model-specific connector maps, and [Install Guide.pdf](Install%20Guide.pdf)
 for deployment. The user guide follows the supplied Kvaser manual's layout conventions.
 The new [SIGNAL EXPLORER Scripting User's Guide](Scripting%20User%27s%20Guide.pdf)
 teaches the Python CAN API and common MCU tests with nine commented source files
@@ -95,7 +95,7 @@ Vendor DLLs are **not** bundled. Install each vendor’s driver on the PC that h
 Python 3.12+ is required.
 
 ```powershell
-cd "C:\Users\Jabe\Documents\Signal Explorer"
+cd "C:\Users\Jabe\Documents\Signal Explorer\signal-explorer"
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -e .
