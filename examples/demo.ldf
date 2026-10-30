@@ -1,0 +1,53 @@
+LIN_description_file;
+LIN_protocol_version = "2.2";
+LIN_language_version = "2.2";
+LIN_speed = 19.2 kbps;
+Nodes {
+  Master: DemoMaster, 5 ms, 0.1 ms;
+  Slaves: DemoSlave;
+}
+Signals {
+  FanCommand: 8, 25, DemoMaster, DemoSlave;
+  Enable: 1, 1, DemoMaster, DemoSlave;
+  EngineRPM: 16, 1800, DemoSlave, DemoMaster;
+  CoolantTemperature: 8, 110, DemoSlave, DemoMaster;
+  FanActual: 8, 25, DemoSlave, DemoMaster;
+}
+Frames {
+  MasterCommand: 16, DemoMaster, 2 {
+    FanCommand, 0;
+    Enable, 8;
+  }
+  EngineStatus: 32, DemoSlave, 4 {
+    EngineRPM, 0;
+    CoolantTemperature, 16;
+    FanActual, 24;
+  }
+}
+Node_attributes {
+  DemoSlave {
+    LIN_protocol = "2.2";
+    configured_NAD = 1;
+    initial_NAD = 1;
+    product_id = 1, 1, 1;
+    P2_min = 50 ms;
+    ST_min = 0 ms;
+    configurable_frames { EngineStatus; }
+  }
+}
+Schedule_tables {
+  DemoSchedule {
+    MasterCommand delay 50 ms;
+    EngineStatus delay 50 ms;
+  }
+}
+Signal_encoding_types {
+  RpmEncoding { physical_value, 0, 65535, 1, 0, "rpm"; }
+  TemperatureEncoding { physical_value, 0, 255, 1, -40, "degC"; }
+  PercentEncoding { physical_value, 0, 100, 1, 0, "%"; }
+}
+Signal_representation {
+  RpmEncoding: EngineRPM;
+  TemperatureEncoding: CoolantTemperature;
+  PercentEncoding: FanCommand, FanActual;
+}
