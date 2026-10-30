@@ -1,0 +1,17 @@
+README.md
+pyproject.toml
+src/signal_explorer/__init__.py
+src/signal_explorer/__main__.py
+src/signal_explorer/app.py
+src/signal_explorer.egg-info/PKG-INFO
+src/signal_explorer.egg-info/SOURCES.txt
+src/signal_explorer.egg-info/dependency_links.txt
+src/signal_explorer.egg-info/entry_points.txt
+src/signal_explorer.egg-info/requires.txt
+src/signal_explorer.egg-info/top_level.txt
+src/signal_explorer/bus/__init__.py
+src/signal_explorer/bus/backends.py
+src/signal_explorer/bus/service.py
+src/signal_explorer/ui/__init__.py
+src/signal_explorer/ui/main_window.py
+src/signal_explorer/ui/trace_model.py

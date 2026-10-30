@@ -1,0 +1,2 @@
+[console_scripts]
+signal-explorer = signal_explorer.app:main
