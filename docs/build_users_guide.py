@@ -736,7 +736,7 @@ table(['Configuration','Meaning'],[
     ['QT_QPA_PLATFORM=offscreen','Used for automated headless UI checks, not normal interactive operation. Do not set it in a normal launch session.'],
 ], [2.2,3.9], 'Supported project environment hooks; vendor runtimes still must be installed.')
 h('Developer / verification commands')
-code('.\\.venv\\Scripts\\python.exe -m pip check\n.\\.venv\\Scripts\\python.exe -m unittest discover -s tests -v')
+code('.\\.venv\\Scripts\\python.exe -m pip check\n.\\.venv\\Scripts\\python.exe -m pytest tests -q')
 p('Automated checks use Virtual buses, simulation and mocked vendor APIs. They do not establish a new adapter\'s physical timing or electrical performance.')
 h('Where behavior is defined')
 p('<b>ui/main_window.py</b>: CAN controls; <b>ui/lin_panel.py</b>: LIN controls; <b>ui/*trace_model.py</b>: columns, counts and history; '
@@ -779,10 +779,10 @@ p('Vector\'s official CDN rejected the local download during preparation. Vector
   'for current revision details, use the official manual/Hardware Manager before wiring. Conditional piggy tables are examples and do not identify the user\'s two uninspected LIN piggies.','Small')
 page('7.11 Revision history and validation','revision')
 table(['Revision / date','Change'],[
-    ['1.3 / October 30, 2026','NI-XNET USB-8502 Classic/FD integration, interface discovery and internal termination control; driver setup, NI MAX checks, electrical profile, pinouts and mock-test acceptance scope. NI-CAN excluded.'],
     ['1.0 / October 25, 2026','Initial CAN/FD/LIN guide, workflows, fault recovery, adapter pinouts and CLI.'],
     ['1.1 / October 26, 2026','Ethernet simulation, PC Npcap and ValueCAN4-2EL: installation, discovery, GUI map, sending/filtering, MF4/replay, diagnostics, connectors and validation scope.'],
     ['1.2 / October 29, 2026','Python editor/runner and CAN API; continuous 321/221 demo; File Viewer and read-only timed MF4 replay; SE icon/splash; Intrepid clock alignment and replay discontinuity/timeout fixes. Companion Scripting User\'s Guide and nine source examples added.'],
+    ['1.3 / October 30, 2026','NI-XNET USB-8502 Classic/FD integration, interface discovery and internal termination control; driver setup, NI MAX checks, electrical profile, pinouts and mock-test acceptance scope. NI-CAN excluded.'],
 ], [1.7,4.4], 'Document revision, independent of the application version.')
 p('Signal Explorer is the application name used here. Vendor names identify supported interfaces and source documents; this guide does not imply vendor endorsement, product certification or independent ASAM conformance certification.','Small')
 h('Validation for this edition')

@@ -176,7 +176,7 @@ For a hardware-free check, select Virtual, enable Inject demo traffic and
 connect. Load `examples/demo.dbc` to decode ID `100`. Send ID `200` with data
 `DE AD BE EF`; send again with different data to see the same row update.
 
-Run feature checks with `.\.venv\Scripts\python.exe -m unittest discover -s tests -v`.
+Run feature checks with `.\.venv\Scripts\python.exe -m pytest tests -q` (install `.[dev]` first).
 
 ## Vector VN1610 and Intrepid ValueCAN4
 

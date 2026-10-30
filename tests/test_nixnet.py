@@ -68,6 +68,8 @@ def test_discovery_ports_capabilities_and_no_sessions():
         options, note = discover_channels('nixnet')
     assert [o.config['channel'] for o in options] == ['CAN7', 'CAN8']
     assert options[0].config['supports_fd']
+    assert options[0].config['device_serial'] == '1234'
+    assert options[0].config['physical_port'] == 1
     assert not options[1].config['can_term_available']
     assert 'USB-8502' in options[0].label and '1234' in options[0].label
     assert '2 NI-XNET' in note
@@ -190,7 +192,8 @@ def test_service_stream_and_tx_share_host_epoch_and_disable_demo(tmp_path):
     recorder = MF4Recorder(temp_directory=tmp_path)
     try:
         with patch('signal_explorer.bus.service.can.Bus', return_value=wire):
-            service.connect_bus(NI, 'CAN7', 500000, True, fd=True)
+            service.connect_bus(NI, 'CAN7', 500000, True,
+                                dict(device_serial='1234', device_model='USB-8502', physical_port=1), fd=True)
         assert service.is_connected and service._demo_bus is None
         assert service._rx_clock is None
         recorder.start(service.session_info)
@@ -207,6 +210,7 @@ def test_service_stream_and_tx_share_host_epoch_and_disable_demo(tmp_path):
         assert abs(traffic[-1].timestamp - traffic[0].timestamp) < 5
         assert peer.recv(.2).arbitration_id == 0x321
         assert not service.session_info['can_termination']
+        assert service.session_info['serial'] == '1234'
     finally:
         service.disconnect_bus()
         peer.shutdown()

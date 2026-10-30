@@ -136,6 +136,9 @@ class BusService(QObject):
                                  serial=(device_config or {}).get("serial"))
         if backend.interface == "nixnet":
             self.session_info["can_termination"] = kwargs["can_termination"]
+            self.session_info["serial"] = (device_config or {}).get("device_serial")
+            for key in ("device_model", "physical_port"):
+                self.session_info[key] = (device_config or {}).get(key)
         if self._rx_clock is not None:
             self.session_info['timestamp_source'] = 'Hardware intervals anchored to host time at first RX'
         self._reader = _Reader(self._bus, self._capture_received)

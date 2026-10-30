@@ -29,6 +29,7 @@ def discover_ni_channels():
                 options.append(ChannelOption(
                     f"{name} | serial {serial} | {channel} | port {port.port_num}",
                     dict(channel=channel, supports_fd=True,
+                         device_model=name, device_serial=serial, physical_port=port.port_num,
                          can_term_available=port.can_term_cap == constants.CanTermCap.YES)))
         return options, (f"{len(options)} NI-XNET high-speed CAN/FD channels detected."
                          if options else "NI-XNET API loaded; no high-speed CAN channels detected. "
