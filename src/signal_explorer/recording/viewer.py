@@ -23,7 +23,8 @@ def format_event(event):
             ('EXT', frame.is_extended_id), ('FD', frame.is_fd),
             ('BRS', frame.bitrate_switch), ('RTR', frame.is_remote_frame),
             ('ERROR', frame.is_error_frame)) if enabled) or 'STD'
-        return f'{prefix}  {frame.arbitration_id:03X}  {flags:10}  DLC {frame.dlc:2}  {bytes(frame.data).hex(" ").upper()}'
+        identifier = f'{frame.arbitration_id:03X}' + (' (Error Frame)' if frame.is_error_frame else '')
+        return f'{prefix}  {identifier}  {flags:10}  DLC {frame.dlc:2}  {bytes(frame.data).hex(" ").upper()}'
     if event.protocol == 'LIN':
         return f'{prefix}  ID {frame.frame_id:02X}  {frame.kind}  {frame.model}  {frame.data.hex(" ").upper()}'
     return f'{prefix}  {len(frame.raw)} bytes  {frame.raw.hex(" ").upper()}'

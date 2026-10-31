@@ -38,7 +38,7 @@ class TraceModel(QAbstractTableModel):
             return None
         name, signals = self._decode(msg)
         return (f"{msg.timestamp:.6f}", str(count), str(msg.channel) if msg.channel is not None else "",
-                f"{msg.arbitration_id:03X}", "Y" if msg.is_extended_id else "",
+                f"{msg.arbitration_id:03X}" + (" (Error Frame)" if msg.is_error_frame else ""), "Y" if msg.is_extended_id else "",
                 "RX" if msg.is_rx else "TX", str(msg.dlc),
                 msg.data.hex(" ").upper(), name, signals, "Y" if msg.is_fd else "",
                 "Y" if msg.bitrate_switch else "", "Y" if msg.error_state_indicator else "")[index.column()]

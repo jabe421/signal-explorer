@@ -153,6 +153,7 @@ class MainWindow(QMainWindow):
         self._table.setSelectionBehavior(QTableView.SelectionBehavior.SelectRows)
         self._table.horizontalHeader().setStretchLastSection(True)
         self._table.setColumnWidth(0, 165)
+        self._table.setColumnWidth(3, 175)
         self._table.setColumnWidth(7, 210)
         self._table.setColumnWidth(8, 160)
 
