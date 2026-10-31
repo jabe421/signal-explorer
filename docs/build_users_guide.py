@@ -93,7 +93,7 @@ p('CAN / CAN FD, LIN and Ethernet desktop workbench','Centered')
 story.append(Spacer(1,22))
 figure('can.png','Figure 1: Signal Explorer running virtual CAN FD traffic with the demo DBC.')
 story.append(Spacer(1,16))
-p('Application version 0.1.0 - NI-XNET / USB-8502 release<br/>Document revision 1.3 - October 30, 2026','Centered')
+p('Application version 0.1.0 - DBC editor and adapter preferences<br/>Document revision 1.4 - October 31, 2026','Centered')
 note('This guide describes the current source build. Hardware driver integration is not a physical-bus qualification. '
      'NI-XNET USB-8502, native LIN and ValueCAN Ethernet await powered bench verification. Passive PC Ethernet capture has been checked. '
      'Ethernet TX is implemented but awaits physical testing. SENT, CAN XL, signal plotting and installers are not implemented.')
@@ -106,8 +106,8 @@ table(['Section','Pages','Use it for'],[
     ['<link href="#s1">1. System prerequisites &amp; hardware profile</link>',page_range('s1','ni_profile'),'PC requirements, rates, FD, isolation and NI-XNET scope.'],
     ['<link href="#s2">2. Mandatory driver/software setup</link>',page_range('s2'),'Preparation before USB or bus connection; Npcap.'],
     ['<link href="#s3">3. Connection &amp; verification</link>',page_range('s3','ni_verify'),'CAN, NI USB-8502, LIN and Ethernet checks.'],
-    ['<link href="#s4">4. Graphical interface reference map</link>',page_range('s4','file_viewer_log'),'Every current column and control, with screenshots.'],
-    ['<link href="#s5">5. Practical workflows</link>',page_range('s5','scripting_workflow'),'DBC/LDF, sending, Ethernet tests, MF4 capture/replay.'],
+    ['<link href="#s4">4. Graphical interface reference map</link>',page_range('s4','dbc_editor_map'),'Columns and controls, including the DBC editor.'],
+    ['<link href="#s5">5. Practical workflows</link>',page_range('s5','dbc_editor_workflow'),'DBC editing/decoding, LDF, sending and MF4 replay.'],
     ['<link href="#s6">6. Troubleshooting &amp; fault codes</link>',page_range('s6','timestamp_faults'),'CAN/LIN/Ethernet faults, driver errors and recovery.'],
     ['<link href="#s7">7. Appendix: adapter pinouts</link>',page_range('s7','ethernet_pins'),'CANable, Kvaser, PEAK, Vector, Intrepid, NI and Ethernet.'],
     ['<link href="#cli">7. Appendix: command line and sources</link>',page_range('cli','revision'),'Launch commands, environment settings and source register.'],
@@ -115,7 +115,7 @@ table(['Section','Pages','Use it for'],[
 h('How to read the support statements')
 p('<b>Implemented</b> means there is an application code path. <b>Mock tested</b> means API behavior was checked without electrical traffic. '
   '<b>Physically observed</b> means the specific observation stated was made; it does not imply all rates, adapters or features are qualified.')
-p('This release has 156 passing automated tests, including NI-XNET mocks. Existing CANable reception is distinct from native driver mock coverage. '
+p('This release has 166 passing automated tests, including adapter preferences and DBC editing. Existing CANable reception is distinct from native driver mock coverage. '
   'ValueCAN4-2EL VE0245 and five PC Ethernet interfaces were discovered on the development PC. Passive capture on its active Ethernet port worked; '
   'no application-generated physical Ethernet TX or powered ValueCAN Ethernet/LIN verification was performed.')
 h('Manual conventions')
@@ -299,6 +299,7 @@ table(['Region','What it contains'],[
 ], [1.45,4.7], 'Read the CAN window from top to bottom.')
 p('<b>Graphs:</b> there are no plots, gauges, signal charts, bus-load graphs or time cursors in this build. Decoded signals are text in the trace. '
   'Use the saved MF4 in a suitable external viewer when plots are needed. This guide does not invent controls from vendor sample tools.')
+p('<b>Adapter defaults:</b> CAN, LIN and Ethernet lists are alphabetical. Each protocol selects Virtual on first launch, then restores its last selection for this Windows user. Restoration does not connect. CAN/LIN save the backend family; Ethernet saves the NIC/device identity and falls back to Virtual if unavailable, preserving the saved choice for a later Refresh.','Small')
 
 # 9 ---------------------------------------------------------------------------
 page('4.1 CAN columns and controls','can_ref')
@@ -320,7 +321,7 @@ table(['Control','Behavior'],[
     ['Start Exploring / Pause Exploring','Connection starts exploring. Pause freezes trace and display counters while RX draining, TX and logging continue. Paused frames are not backfilled.'],
     ['Auto-scroll (all messages)','Checked: all observed frames in time order, last 10000 retained. Unchecked: one updated row per channel/ID/format. Toggle preserves recent history.'],
     ['Apply filter / Clear filter','Apply hex ID/range expression; Enter also applies. Clear restores all IDs. A filter affects display only; invalid input keeps the previous filter.'],
-    ['Load DBC / Unload DBC','Load decodes existing and new rows; unload returns to raw. No DBC signal-value transmit editor exists.'],
+    ['Load / Unload / Edit DBC','Load decodes rows; Unload returns to raw. Edit opens the database editor (section 4.8); it does not transmit signal values.'],
 ], [1.8,4.3], 'Connection, trace and decoding controls. See sections 5.2 and 5.4 for sending and recording.')
 
 # 10 --------------------------------------------------------------------------
@@ -411,6 +412,17 @@ table(['Control','Meaning'],[
     ['Replay Output','Load, preflight, progress, completion, failure, pause and stopping messages. The main monitor and logger remain independent.'],
 ], [1.55,4.6], 'Log mode. Existing protocol-tab playback controls remain available.')
 p('Display cap: first 100000 rows or about 32 MiB of text; the output reports truncation, but replay reads the entire file. No ASC/BLF/PCAP import, seek, speed or automatic loop. LIN retains Master-header/Slave-buffer semantics.','Small')
+
+page('4.8 DBC editor reference map','dbc_editor_map')
+figure('dbc-editor.png','Figure: DBC editor with the demo EngineData message, highlighted RPM bits and offline decoded payload.',285)
+table(['Region / control','Function'],[
+    ['File / toolbar','New, Open, Save, Save As and Validate. Edit menu / toolbar: Undo and Redo. Standard keyboard shortcuts are available.'],
+    ['Messages, left','Hex IDs and message names. Add/Edit/Delete; double-click opens message properties: ID, standard/extended, CAN/FD, byte length, cycle time, senders and comment.'],
+    ['Signals, center','Name, Start, Bits, Order, Signed, Factor, Offset, Unit and Range. Add/Edit/Delete signal or double-click its row. Properties also include receivers, comments and raw-value labels.'],
+    ['Message map, right','Payload bytes down the rows and bits 7 to 0 across. Select a signal to highlight its bits and show start/length/order. Hover for DBC bit numbers and owners; drag the divider to resize.'],
+    ['DBC preview / Test decoding','Read-only generated DBC text. Enter exactly the selected message\'s byte length in hex for physical values and value labels. This calculation is offline; it sends no frame.'],
+], [1.45,4.7], 'Open with Edit DBC beside Load DBC / Unload DBC on the CAN screen.')
+p('The editor uses a private database copy. Live monitoring, scripts and recording continue. Unsaved edits do not change decoding; section 5.7 explains save/reload rules and editing limits.','Small')
 
 page('5 Practical workflows: CAN and DBC','s5')
 h('5.1 Decode a database and filter IDs')
@@ -515,6 +527,20 @@ h('Open and replay a saved test')
 steps(['Open the correct protocol MF4 via File Viewer, connect the intended destination and select Recorded bus plus recorded direction.',
        'Use Replay, Pause/Resume and Stop in the viewer. The main tab\'s Stop Playback can also stop it. Only one replay per protocol can run.',
        'Use Follow execution for row tracking. Log-mode line delay changes highlighting only; selected recorded gaps remain unchanged.'])
+
+page('5.7 Create, edit and verify a DBC','dbc_editor_workflow')
+h('Open a private editing copy')
+steps(['Load the intended DBC on the CAN screen, then click <b>Edit DBC</b>. The editor starts with a private copy of the loaded database. With no loaded database it starts empty; Open chooses another file and New starts a blank document.',
+       'Use Add/Edit/Delete below Messages. Enter the arbitration ID in hex, select standard/extended and Classic/FD, then set payload byte length, cycle time, senders and optional comment. Cycle time is database metadata; it does not start repeated sending.',
+       'Use Add signal or double-click a signal row. Set name, start bit, bit length, byte order, signedness, factor/offset, optional range and unit. Receivers, comment and raw-value labels are in the properties dialog. Enter labels one per line, such as 0=Released and 1=Pressed.',
+       'Select a signal and check the message map. Intel uses little-endian ordering. Motorola uses DBC sawtooth numbering: start bit 7 runs through bit 0, then bit 15. Map column labels are bit positions within each byte.',
+       'Click Validate. Overlapping/out-of-payload signals and other invalid edits are rejected without replacing the document. Undo/Redo restores accepted edits. Test decoding with a payload of exactly the message\'s length to check scaling and labels offline.'])
+h('Example: verify an RPM scaling definition')
+p('In an empty database add standard Classic CAN message <b>EngineTest</b>, ID <b>321</b>, length <b>8</b>. Add <b>EngineRPM</b>, start <b>0</b>, length <b>16</b>, Intel, unsigned, factor <b>0.25</b>, offset <b>0</b>, unit <b>rpm</b>. Leave optional range blank. The payload <b>40 1F 00 00 00 00 00 00</b> has raw value 8000 and should decode to <b>2000 rpm</b>. This does not send CAN traffic.')
+h('Save, reload and close')
+p('<b>Save</b> validates and atomically writes the DBC. If that exact file is currently loaded on the CAN screen, a successful save reloads its decoder for existing/new trace rows. <b>Save As</b> to another path does not switch the active decoder. With no active DBC, use <b>Load DBC</b> after saving. New/Open/Close prompt to save dirty work; Cancel leaves the editor open.')
+h('Current editing limits')
+p('Multiplexing and floating-point definitions are preserved but not configured by the basic forms. A multiplexer cannot be renamed, or deleted while dependents remain. Saving uses cantools serialization, so whitespace and ordering may change; text must fit Windows-1252. There is no DBC-based signal transmit encoder.','Small')
 
 page('6 Troubleshooting: CAN and drivers','s6')
 table(['Symptom / fault','Interpretation and action'],[
@@ -783,10 +809,11 @@ table(['Revision / date','Change'],[
     ['1.1 / October 26, 2026','Ethernet simulation, PC Npcap and ValueCAN4-2EL: installation, discovery, GUI map, sending/filtering, MF4/replay, diagnostics, connectors and validation scope.'],
     ['1.2 / October 29, 2026','Python editor/runner and CAN API; continuous 321/221 demo; File Viewer and read-only timed MF4 replay; SE icon/splash; Intrepid clock alignment and replay discontinuity/timeout fixes. Companion Scripting User\'s Guide and nine source examples added.'],
     ['1.3 / October 30, 2026','NI-XNET USB-8502 Classic/FD integration, interface discovery and internal termination control; driver setup, NI MAX checks, electrical profile, pinouts and mock-test acceptance scope. NI-CAN excluded.'],
+    ['1.4 / October 31, 2026','Alphabetical per-protocol adapter lists, Virtual first-run defaults and remembered selections. DBC editor reference, bit layout, offline decoding, editing workflow, validation and save/reload behavior.'],
 ], [1.7,4.4], 'Document revision, independent of the application version.')
 p('Signal Explorer is the application name used here. Vendor names identify supported interfaces and source documents; this guide does not imply vendor endorsement, product certification or independent ASAM conformance certification.','Small')
 h('Validation for this edition')
-p('156 automated tests cover the existing protocols, NI-XNET discovery/native session conversion and MF4 RX/TX, editor controls, pause/stop, replay direction/timing, log loading, timestamp alignment and the documented script examples. '
+p('166 automated tests cover adapter preference restoration, DBC editing/validation/save isolation, the existing protocols, NI-XNET discovery/native session conversion and MF4 RX/TX, editor controls, pause/stop, replay direction/timing, log loading, timestamp alignment and the documented script examples. '
   'Five examples run against built-in virtual traffic; four MCU templates run against a private mock firmware peer after enabling their contract flag in the test harness. '
   'The default MCU templates are also checked to reject transmission before configuration. Native electrical qualification remains outside these tests.')
 p('The source code, docs/scripting.md, docs/file-viewer.md, examples/scripts/mcu/ and tests/test_scripting_examples.py define the October 29 behavior. '
@@ -808,7 +835,7 @@ def decorate(canvas,doc):
         canvas.line(52,H-41,W-52,H-41)
     canvas.line(52,40,W-52,40)
     canvas.setFont('Helvetica',8)
-    canvas.drawString(52,26,'SIGNAL EXPLORER  |  Revision 1.3  |  October 30, 2026')
+    canvas.drawString(52,26,'SIGNAL EXPLORER  |  Revision 1.4  |  October 31, 2026')
     canvas.drawRightString(W-52,26,str(doc.page))
     canvas.restoreState()
 
@@ -827,4 +854,4 @@ if __name__=='__main__':
         print(f'{i:02} {len(text):4} {title}')
         assert title.replace('&','&') in text.replace('\n',' '),f'Unexpected pagination on page {i}: {title}'
     assert len(reader.pages)==len(pages),'Unexpected overflow page: inspect and adjust layout.'
-    assert len(reader.pages)==38
+    assert len(reader.pages)==40

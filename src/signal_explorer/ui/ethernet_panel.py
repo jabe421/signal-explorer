@@ -8,6 +8,7 @@ from signal_explorer.ethernet.codec import EthernetCodec
 from signal_explorer.ethernet.discovery import discover_adapters,virtual_adapter
 from signal_explorer.ui.ethernet_trace_model import EthernetTraceModel,EthernetFilter
 from signal_explorer.ui.recording_panel import RecordingPanel
+from signal_explorer.ui.adapter_preferences import AdapterPreference, ethernet_key
 
 
 class EthernetPanel(QWidget):
@@ -16,6 +17,7 @@ class EthernetPanel(QWidget):
         self.service=EthernetService(self);self.exploring=False;self.rx=self.tx=0
         self._repeat_frame=None
         self._scanned=False
+        self._adapter_preference=AdapterPreference('ethernet')
         self._repeat=QTimer(self);self._repeat.setTimerType(Qt.TimerType.PreciseTimer);self._repeat.timeout.connect(self._send_repeat)
         self._build()
         self.service.connected.connect(self._connected)
@@ -33,6 +35,10 @@ class EthernetPanel(QWidget):
         self.adapter.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
         self.adapter.addItem(virtual_adapter().label,virtual_adapter())
         self.adapter.currentIndexChanged.connect(self._adapter_changed)
+        self.adapter.currentIndexChanged.connect(lambda _: self._adapter_preference.save(ethernet_key(self._selected())))
+        # An explicit choice of Virtual must override a missing saved device,
+        # even when fallback has already selected the same visible row.
+        self.adapter.activated.connect(lambda _: self._adapter_preference.save(ethernet_key(self._selected())))
         bar.addWidget(self.adapter,1)
         self.scan=QPushButton('Refresh adapters');self.scan.clicked.connect(self._scan_adapters);bar.addWidget(self.scan)
         self.demo=QCheckBox('Inject demo traffic');self.demo.setChecked(True)
@@ -119,15 +125,18 @@ class EthernetPanel(QWidget):
 
     def _scan_adapters(self):
         if self.service.is_connected:return
-        previous=self._selected().identity
+        previous=self._adapter_preference.load(ethernet_key(virtual_adapter()))
         options,report=discover_adapters()
+        options=sorted(options,key=lambda option:option.label.casefold())
         self.adapter.blockSignals(True);self.adapter.clear()
-        selected=0
+        selected=None
         for index,option in enumerate(options):
             self.adapter.addItem(option.label,option)
             self.adapter.setItemData(index,option.detail,Qt.ItemDataRole.ToolTipRole)
             self.adapter.model().item(index).setEnabled(option.available)
-            if option.identity==previous and option.available:selected=index
+            if ethernet_key(option)==previous and option.available:selected=index
+        if selected is None:
+            selected=next(index for index,option in enumerate(options) if option.backend=='virtual')
         self.adapter.setCurrentIndex(selected);self.adapter.blockSignals(False)
         self.scan_status.setText(report);self._scanned=True;self._adapter_changed()
 

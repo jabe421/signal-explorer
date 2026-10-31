@@ -10,6 +10,7 @@ from signal_explorer.lin.codec import LINCodec
 from signal_explorer.ui.lin_trace_model import LinTraceModel
 from signal_explorer.ui.trace_model import IdFilter
 from signal_explorer.ui.recording_panel import RecordingPanel
+from signal_explorer.ui.adapter_preferences import AdapterPreference
 
 class LinPanel(QWidget):
     def __init__(self, parent=None):
@@ -18,6 +19,7 @@ class LinPanel(QWidget):
         self.database = None
         self.exploring = False
         self.rx = self.tx = 0
+        self._adapter_preference = AdapterPreference("lin")
         self._build()
         self.service.connected.connect(self._connected)
         self.service.disconnected.connect(self._disconnected)
@@ -30,10 +32,13 @@ class LinPanel(QWidget):
     def _build(self):
         self.adapter_widget = QWidget()
         bar = QHBoxLayout(self.adapter_widget); bar.setContentsMargins(0,0,0,0)
-        self.adapter = QComboBox(); self.adapter.addItem('Virtual LIN (simulated)', 'virtual')
-        self.adapter.addItem('Intrepid ValueCAN4-2EL', 'neovi')
-        self.adapter.addItem('Vector VN16xx / XL LIN', 'vector')
-        self.adapter.addItem('PEAK PLIN / PCAN-USB Pro FD', 'peak')
+        self.adapter = QComboBox()
+        choices = [('Virtual LIN (simulated)', 'virtual'), ('Intrepid ValueCAN4-2EL', 'neovi'),
+                   ('Vector VN16xx / XL LIN', 'vector'), ('PEAK PLIN / PCAN-USB Pro FD', 'peak')]
+        for label, key in sorted(choices, key=lambda item: item[0].casefold()):
+            self.adapter.addItem(label, key)
+        index = self.adapter.findData(self._adapter_preference.load())
+        self.adapter.setCurrentIndex(index if index >= 0 else self.adapter.findData('virtual'))
         self.channel = QComboBox();self.channel.setMinimumWidth(200)
         self.refresh_devices = QPushButton('Refresh');self.refresh_devices.clicked.connect(self._scan_devices)
         self.role = QComboBox()
@@ -105,6 +110,7 @@ class LinPanel(QWidget):
         root.addWidget(self.recording)
         self.status=QLabel('LIN disconnected');self.status.setWordWrap(True);root.addWidget(self.status)
         self.adapter.currentIndexChanged.connect(self._scan_devices)
+        self.adapter.currentIndexChanged.connect(lambda _: self._adapter_preference.save(self.adapter.currentData()))
         self._scan_devices()
 
     def _scan_devices(self,*_):

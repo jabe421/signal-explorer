@@ -12,13 +12,19 @@ Virtual CAN and demo traffic connected; a source copy is in
 321 hex, verifies the demo peer's 221-hex echoes, and increments each byte until
 Stop. Monitoring and logging continue independently.
 See [docs/scripting.md](docs/scripting.md) for the API and control boundaries.
+**Edit DBC**, beside the CAN screen's Load/Unload buttons, opens a native DBC
+editor with message/signal properties, value labels, undo/redo, validation,
+bit layout and offline payload decoding. It edits a private copy while live
+monitoring continues; saving the currently loaded file refreshes its decoder.
+See [docs/dbc-editor.md](docs/dbc-editor.md) for details and module boundaries.
 **File Viewer > Open Logfile** opens a read-only MDF4 log in the editor-style
 window. Replay RX, TX, or both through the connected protocol session using 1x
 recorded timing, with Pause/Resume/Stop and highlighted rows. Line delay controls
 highlight refresh only, preserving transmission timing. See
 [docs/file-viewer.md](docs/file-viewer.md) for log viewing and replay.
 Ethernet and LIN Python scripting are reserved for a later release. The PDF
-Install and User guides were updated October 30, 2026 for NI-XNET / USB-8502.
+Install and User guides were updated October 31, 2026 for the DBC editor and
+remembered adapter selections, retaining the NI-XNET / USB-8502 setup.
 The companion scripting guide retains the October 29 scripting release.
 
 See [Users Guide.pdf](Users%20Guide.pdf) for operation, UI reference, workflows,
@@ -30,6 +36,14 @@ in [examples/scripts/mcu](examples/scripts/mcu). Five use the built-in simulator
 four require matching firmware and refuse TX until their contract is confirmed.
 
 Supported CAN backends (via [python-can](https://python-can.readthedocs.io/)):
+
+Adapter dropdowns are alphabetical in CAN, LIN and Ethernet. Each protocol starts
+with its virtual adapter on first launch, then remembers the last selected adapter
+on this Windows user profile. Restoring a selection never connects automatically.
+CAN/LIN remember the backend family; Ethernet remembers the actual NIC/device
+identity across refreshes. An unavailable Ethernet choice falls back to simulation
+without replacing the saved preference. Refresh discovers available hardware; it
+does not select an arbitrary connected adapter over your saved choice.
 
 | Adapter | python-can interface | Extra software |
 | --- | --- | --- |

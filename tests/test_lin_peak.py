@@ -152,7 +152,7 @@ class PeakLINTests(unittest.TestCase):
             self.assertEqual(panel.channel.count(),0)
             self.assertIn('Install PLIN',panel.note.text())
             self.assertTrue(panel.demo_peer.isHidden())
-            panel.adapter.setCurrentIndex(0)
+            panel.adapter.setCurrentIndex(panel.adapter.findData('virtual'))
             panel.service.connect_simulated('master',19200,False)
             self.addCleanup(panel.service.disconnect_bus)
             self.assertTrue(panel.inject.isEnabled())

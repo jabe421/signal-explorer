@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import QSettings, QTimer, Qt
 from PySide6.QtGui import QAction
+from signal_explorer.ui.adapter_preferences import AdapterPreference
 from pathlib import Path
 from signal_explorer.bus.discovery import discover_channels
 from PySide6.QtWidgets import (
@@ -58,6 +59,7 @@ class MainWindow(QMainWindow):
         self._script_transport = CanScriptTransport(self._service, self)
         self._script_controller = ScriptController(self._script_transport, self)
         self._script_windows = []
+        self._dbc_windows = []
 
         self._exploring = False
         self._model = TraceModel()
@@ -65,8 +67,12 @@ class MainWindow(QMainWindow):
         self._tx_timer = QTimer(self)
         self._tx_timer.setTimerType(Qt.TimerType.PreciseTimer)
         self._tx_timer.timeout.connect(self._send_repeated_message)
+        self._adapter_preference = AdapterPreference("can")
         self._build()
-        self._select_canable_if_present()
+        self._backend.blockSignals(True)
+        index = self._backend.findData(self._adapter_preference.load())
+        self._backend.setCurrentIndex(index if index >= 0 else self._backend.findData("virtual"))
+        self._backend.blockSignals(False)
         self._apply_backend(self._current_backend())
 
     def _build(self) -> None:
@@ -77,9 +83,11 @@ class MainWindow(QMainWindow):
                                 ('Open CAN Simulation Example', self._open_demo_script)):
             action=QAction(title,self);action.triggered.connect(callback);scripts.addAction(action)
         self._backend = QComboBox()
-        for spec in BACKENDS:
+        for spec in sorted(BACKENDS, key=lambda spec: spec.label.casefold()):
             self._backend.addItem(spec.label, spec.key)
+        self._backend.setCurrentIndex(self._backend.findData("virtual"))
         self._backend.currentIndexChanged.connect(lambda _: self._apply_backend(self._current_backend()))
+        self._backend.currentIndexChanged.connect(lambda _: self._adapter_preference.save(self._current_backend().key))
 
         self._channel = QComboBox()
         self._channel.setEditable(True)
@@ -171,8 +179,10 @@ class MainWindow(QMainWindow):
         load_dbc.clicked.connect(self._load_dbc)
         unload_dbc = QPushButton("Unload DBC")
         unload_dbc.clicked.connect(self._unload_dbc)
+        edit_dbc = QPushButton("Edit DBC")
+        edit_dbc.clicked.connect(self._open_dbc_editor)
         self._dbc_label = QLabel("No DBC loaded")
-        for widget in (QLabel("ID filter"), self._filter, apply_filter, clear_filter, load_dbc, unload_dbc, self._dbc_label):
+        for widget in (QLabel("ID filter"), self._filter, apply_filter, clear_filter, load_dbc, unload_dbc, edit_dbc, self._dbc_label):
             filters.addWidget(widget)
         self._auto_scroll = QCheckBox("Auto-scroll (all messages)")
         self._auto_scroll.setChecked(True)
@@ -281,15 +291,6 @@ class MainWindow(QMainWindow):
             if spec.key == key:
                 return spec
         return BACKENDS[0]
-
-    def _select_canable_if_present(self) -> None:
-        port = preferred_slcan_port()
-        if not port:
-            return
-        for index in range(self._backend.count()):
-            if self._backend.itemData(index) == "slcan":
-                self._backend.setCurrentIndex(index)
-                break
 
     def _fill_channel(self, spec: BackendSpec) -> None:
         self._channel.blockSignals(True)
@@ -471,6 +472,31 @@ class MainWindow(QMainWindow):
         self._dbc_label.setText("No DBC loaded")
         self._dbc_label.setToolTip("")
 
+    def _open_dbc_editor(self):
+        from signal_explorer.ui.dbc_editor import DbcEditorWindow
+
+        path = self._recording_panel.database_path
+        # Reuse the editor for this file so independent copies cannot overwrite one another.
+        resolved = Path(path).resolve() if path else None
+        for window in self._dbc_windows:
+            if window.path == resolved:
+                window.showNormal(); window.raise_(); window.activateWindow()
+                return window
+        window = DbcEditorWindow(self._model.database, path, self)
+        self._dbc_windows.append(window)
+        window.closed.connect(lambda closed: self._dbc_windows.remove(closed))
+        window.saved.connect(self._dbc_editor_saved)
+        window.show(); window.raise_(); window.activateWindow()
+        return window
+
+    def _dbc_editor_saved(self, path, database):
+        active = self._recording_panel.database_path
+        if active is not None and Path(active).resolve() == Path(path).resolve():
+            self._model.set_database(database)
+            self._recording_panel.database_path = path
+            self._dbc_label.setText(f"{Path(path).name} ({len(database.messages)} messages)")
+            self._dbc_label.setToolTip(path)
+
     def _send_message(self):
         if self._recording_panel.playback_busy:
             return
@@ -549,6 +575,9 @@ class MainWindow(QMainWindow):
         QMessageBox.warning(self, "Signal Explorer", text)
 
     def closeEvent(self, event) -> None:  # noqa: N802
+        for window in list(self._dbc_windows):
+            if not window.close():
+                event.ignore(); return
         for window in list(self._script_windows):
             if not window.request_close(main=True):
                 event.ignore();return
