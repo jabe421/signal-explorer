@@ -1,0 +1,48 @@
+{
+  "format": "SignalExplorer CAN transmit list",
+  "version": 1,
+  "messages": [
+    {
+      "name": "Message 1",
+      "identifier": 530,
+      "channel": null,
+      "extended": false,
+      "fd": false,
+      "brs": false,
+      "enabled": true,
+      "cyclic": false,
+      "period_ms": 100,
+      "data": "ff00ff00ff00ff00",
+      "waves": {},
+      "dbc": null
+    },
+    {
+      "name": "Message 2",
+      "identifier": 531,
+      "channel": null,
+      "extended": false,
+      "fd": false,
+      "brs": false,
+      "enabled": true,
+      "cyclic": true,
+      "period_ms": 250,
+      "data": "ffffffffff00ff00",
+      "waves": {},
+      "dbc": null
+    },
+    {
+      "name": "Message 3",
+      "identifier": 532,
+      "channel": null,
+      "extended": false,
+      "fd": false,
+      "brs": false,
+      "enabled": true,
+      "cyclic": true,
+      "period_ms": 1000,
+      "data": "ff00ff00ffffffff",
+      "waves": {},
+      "dbc": null
+    }
+  ]
+}
