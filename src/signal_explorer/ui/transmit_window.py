@@ -5,6 +5,7 @@ import os
 import tempfile
 
 import cantools
+from signal_explorer.paths import save_path
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QTableWidget,
@@ -375,7 +376,7 @@ class TransmitWindow(QMainWindow):
             self._try(lambda:self.engine.update(replace(entry,waves=waves)))
 
     def save(self):
-        path,_=QFileDialog.getSaveFileName(self,'Save CAN transmit list',str(self._path or 'CAN-messages.json'),'Transmit list (*.json)')
+        path,_=QFileDialog.getSaveFileName(self,'Save CAN transmit list',save_path('CAN-messages.json', self._path),'Transmit list (*.json)')
         if not path:return False
         def write():
             target=Path(path);temporary=None

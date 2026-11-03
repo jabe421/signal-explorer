@@ -1,5 +1,10 @@
 # Signal Explorer
 
+**Windows installer builds:** use the manually triggered **Build Windows
+installer** GitHub Actions workflow. See [the first-build walkthrough](docs/windows-build.md)
+for committing the workflow, starting a build, downloading the installer and
+testing it on another PC. Builds upload artifacts; they do not publish a release.
+
 Desktop tool for connecting to automotive buses and inspecting live traffic.
 
 **Multi-message TX...** opens a separate CAN/CAN FD transmit list while preserving

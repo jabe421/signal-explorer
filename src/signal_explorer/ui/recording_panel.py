@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (QWidget, QHBoxLayout, QVBoxLayout, QPushButton, Q
 
 from signal_explorer.recording.recorder import MF4Recorder
 from signal_explorer.recording.playback import MF4Playback
+from signal_explorer.paths import save_path
 
 
 class RecordingPanel(QWidget):
@@ -112,7 +113,7 @@ class RecordingPanel(QWidget):
         self._saving = True
         try:
             default = f"SignalExplorer-{datetime.now():%Y%m%d-%H%M%S}.mf4"
-            path, _ = QFileDialog.getSaveFileName(self, "Save MDF4 recording", default, "ASAM MDF4 (*.mf4)")
+            path, _ = QFileDialog.getSaveFileName(self, "Save MDF4 recording", save_path(default), "ASAM MDF4 (*.mf4)")
             if not path:
                 self._closing = False
                 self._refresh()

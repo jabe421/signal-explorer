@@ -462,10 +462,15 @@ class DbcEditorWindow(QMainWindow):
             return False
 
     def save_as(self):
-        path, _ = QFileDialog.getSaveFileName(self, 'Save DBC', str(self.document.path or 'Untitled.dbc'), 'DBC files (*.dbc)')
+        from signal_explorer.paths import save_path
+        path, _ = QFileDialog.getSaveFileName(self, 'Save DBC', save_path('Untitled.dbc', self.document.path), 'DBC files (*.dbc)')
         return self.save_file(path=path) if path else False
 
     def save_file(self, _checked=False, *, path=None):
+        from signal_explorer.paths import save_path
+        if path is None and self.document.path is not None:
+            if save_path(self.document.path.name, self.document.path) != str(self.document.path):
+                return self.save_as()
         target = Path(path).resolve() if path else self.document.path
         if target is None:
             return self.save_as()

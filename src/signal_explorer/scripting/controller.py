@@ -51,6 +51,15 @@ class ScriptController(QObject):
         with self._lock:
             self._events = Queue(maxsize=self.MAX_RECEIVE)
             self._overflow = False; self._accepting = True
+        if getattr(sys, 'frozen', False):
+            executable = Path(sys.executable).with_name('SignalExplorer-ScriptWorker.exe')
+            if not executable.is_file():
+                with self._lock: self._accepting = False
+                raise RuntimeError('Script worker is missing. Reinstall Signal Explorer with its complete application folder.')
+            arguments = ['--script-worker']
+        else:
+            executable = sys.executable
+            arguments = ['-u', '-m', 'signal_explorer.scripting.worker']
         process = self.process = QProcess(self)
         environment = QProcessEnvironment.systemEnvironment()
         environment.insert('PYTHONIOENCODING', 'utf-8')
@@ -65,7 +74,7 @@ class ScriptController(QObject):
         process.finished.connect(lambda code, status: self._ended(process, code, status))
         process.errorOccurred.connect(lambda error: self._process_error(process, error))
         self._set_state('starting'); self._timer.start()
-        process.start(sys.executable, ['-u', '-m', 'signal_explorer.scripting.worker'])
+        process.start(str(executable), arguments)
 
     def _write(self, message):
         if self.process and self.process.state() != QProcess.ProcessState.NotRunning:

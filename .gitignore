@@ -1,4 +1,5 @@
 .venv/
+.venv-build/
 venv/
 __pycache__/
 *.py[cod]
@@ -9,6 +10,7 @@ build/
 .mypy_cache/
 .ruff_cache/
 *.spec
+!packaging/windows/*.spec
 .env
 .idea/
 .vscode/

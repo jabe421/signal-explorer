@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QPlainTextEdit, QPushButton, QSpinBox, QSplitter, QToolBar, QVBoxLayout, QWidget,
 )
 from signal_explorer.ui.python_editor import PythonEditor
+from signal_explorer.paths import save_path
 
 
 class ScriptWindow(QMainWindow):
@@ -128,11 +129,11 @@ class ScriptWindow(QMainWindow):
         except Exception as exc:QMessageBox.warning(self,'Open failed',str(exc));return False
 
     def save_script(self,*_):
-        if self.path is None:return self.save_as()
+        if self.path is None or save_path(self.path.name, self.path) != str(self.path):return self.save_as()
         return self._save(self.path)
 
     def save_as(self,*_):
-        path,_=QFileDialog.getSaveFileName(self,'Save Python script',str(self.path or 'test_script.py'),'Python scripts (*.py)')
+        path,_=QFileDialog.getSaveFileName(self,'Save Python script',save_path('test_script.py', self.path),'Python scripts (*.py)')
         if not path:return False
         target=Path(path)
         if target.suffix.lower()!='.py':target=Path(str(target)+'.py')
