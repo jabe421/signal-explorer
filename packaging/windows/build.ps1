@@ -1,11 +1,11 @@
 param(
-    [string]$Version = '0.1.0-beta.1',
+    [string]$Version = '0.1.0-beta.2',
     [string]$Python = 'python',
     [switch]$SkipInstaller
 )
 $ErrorActionPreference = 'Stop'
 if ($Version -notmatch '^\d+\.\d+\.\d+(?:-[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*)?$') {
-    throw 'Version must look like 0.1.0 or 0.1.0-beta.1.'
+    throw 'Version must look like 0.1.0 or 0.1.0-beta.2.'
 }
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 Push-Location -LiteralPath $projectRoot

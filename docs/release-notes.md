@@ -1,5 +1,14 @@
 # Source build release notes
 
+## Windows installer 0.1.0-beta.2
+
+Correct the minimum Windows build from 19041 to 17763 (Windows 10 version 1809),
+matching Qt 6.12's documented Windows baseline. Windows 10 1909, build 18363,
+was unnecessarily excluded by beta.1. The application remains x64-only; 32-bit
+Windows is not supported by this installer. Add an explicit requirement message
+and update the manual workflow/build defaults to beta.2. Installer compilation
+does not establish runtime qualification on the older Windows VM.
+
 ## November 2, 2026 (application 0.1.0)
 
 - Select a physical CAN device and enable individual ports with **Enable

@@ -32,7 +32,7 @@ normal GitHub Actions token with read access to repository contents.
    or organization. You need repository write access to start a manual workflow.
 3. Select **Build Windows installer** in the left sidebar.
 4. Click **Run workflow**. Select branch **main**.
-5. Leave the installer version as `0.1.0-beta.1`, or enter the intended release
+5. Leave the installer version as `0.1.0-beta.2`, or enter the intended release
    version. This labels the installer; changing the package's application version
    remains a separate source edit in `pyproject.toml`.
 6. Click the green **Run workflow** button. Refresh after a few seconds, then
@@ -42,7 +42,7 @@ normal GitHub Actions token with read access to repository contents.
    simulation paths and compiles the installer. The workflow has a 45-minute
    timeout; the first build may take several minutes.
 8. A green check means those build checks passed. Scroll to **Artifacts** on the
-   run's summary page. Download **SignalExplorer-windows-x64-0.1.0-beta.1**.
+   run's summary page. Download **SignalExplorer-windows-x64-0.1.0-beta.2**.
    You must be signed into GitHub with access to the repository to download it.
 9. Extract the ZIP. It contains the setup EXE, `SHA256SUMS.txt`, `build-info.json`
    and `packaging-smoke.json`. Artifacts are retained for 30 days. Keep a local
@@ -87,7 +87,12 @@ they do not replace a trusted signature or hardware validation.
 ## First installer acceptance test
 
 Use a Windows x64 test PC/VM without Python or the development checkout.
-The installer minimum is Windows 10 version 2004 (build 19041); use a supported
+The installer minimum is Windows 10 version 1809 (build 17763), x64. This includes
+Windows 10 1909 (build 18363). Beta.1 mistakenly required build 19041; beta.2
+corrects that installer gate. Application operation on the older VM still needs
+verification. Qt 6.12 lists Windows 10 1809 or later in its
+[supported platforms](https://doc.qt.io/qt-6/supported-platforms.html).
+32-bit Windows is not supported by this x64 package. Use a supported
 Windows version under your organization's policy. ARM64 is not qualified.
 
 1. Run Setup and check its destination, Start menu and optional desktop shortcut.
@@ -118,7 +123,7 @@ Use a dedicated Windows x64 Python 3.12 build environment and Inno Setup 6:
 python -m venv .venv-build
 .\.venv-build\Scripts\python.exe -m pip install -c packaging/windows/constraints.txt -r packaging/windows/requirements-build.txt ".[intrepid,nixnet]" "gs-usb==0.3.1" "pyusb==1.3.1"
 .\.venv-build\Scripts\python.exe -m pytest tests -q
-.\packaging\windows\build.ps1 -Python .\.venv-build\Scripts\python.exe -Version 0.1.0-beta.1
+.\packaging\windows\build.ps1 -Python .\.venv-build\Scripts\python.exe -Version 0.1.0-beta.2
 ```
 
 `-SkipInstaller` builds and smoke-tests the application folder when Inno Setup
@@ -130,6 +135,6 @@ files; it does not provide pip installation of arbitrary third-party modules.
 ## Later: GitHub Releases
 
 After clean-PC/bench checks, attach the tested setup EXE and checksum to a draft
-`v0.1.0-beta.1` release, then publish as a pre-release when ready. Publishing is
+`v0.1.0-beta.2` release, then publish as a pre-release when ready. Publishing is
 deliberately separate from this manual build workflow. A later workflow can add
 tag-triggered builds, draft releases, signing and update checks.

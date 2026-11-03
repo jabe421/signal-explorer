@@ -1,5 +1,5 @@
 #ifndef BuildVersion
-  #define BuildVersion "0.1.0-beta.1"
+  #define BuildVersion "0.1.0-beta.2"
 #endif
 #ifndef SourceRoot
   #define SourceRoot "..\.."
@@ -20,7 +20,8 @@ UsePreviousAppDir=yes
 PrivilegesRequired=admin
 ArchitecturesAllowed=x64os
 ArchitecturesInstallIn64BitMode=x64os
-MinVersion=10.0.19041
+; Qt 6.12 supports Windows 10 from 1809. Do not exclude 1909 test PCs.
+MinVersion=10.0.17763
 OutputDir={#SourceRoot}\dist\installer
 OutputBaseFilename=SignalExplorer-Setup-{#BuildVersion}-windows-x64
 SetupIconFile={#SourceRoot}\src\signal_explorer\assets\signal-explorer.ico
@@ -34,6 +35,9 @@ CloseApplications=yes
 RestartApplications=no
 SetupLogging=yes
 Uninstallable=yes
+
+[Messages]
+WindowsVersionNotSupported=Signal Explorer requires Windows 10 version 1809 (build 17763) or later, with a 64-bit (x64) operating system.
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Shortcuts:"; Flags: unchecked

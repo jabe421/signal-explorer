@@ -1,5 +1,9 @@
 SIGNAL EXPLORER - FIRST WINDOWS TEST BUILD
 
+Requires Windows 10 version 1809 (build 17763) or later, x64. Windows 11 x64
+is also eligible. 32-bit Windows is not supported. Beta.2 corrects the overly
+restrictive Windows build check in beta.1; older-VM operation needs validation.
+
 Python, Qt and application Python libraries are included. Do not install Python
 or run pip on the tester's PC. Simulation works without adapter drivers.
 
