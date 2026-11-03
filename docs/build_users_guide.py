@@ -79,7 +79,7 @@ def code(lines):
 def figure(name,caption,max_height=None):
     img=Image(str(ASSETS/name));scale=WIDTH/img.imageWidth
     if max_height:scale=min(scale,max_height/img.imageHeight)
-    img.drawWidth=WIDTH;img.drawHeight=img.imageHeight*scale
+    img.drawWidth=img.imageWidth*scale;img.drawHeight=img.imageHeight*scale
     story.append(img);p(caption,'Small')
 
 def source(text):p('Source: '+text,'Small')
@@ -93,7 +93,7 @@ p('CAN / CAN FD, LIN and Ethernet desktop workbench','Centered')
 story.append(Spacer(1,22))
 figure('can.png','Figure 1: Signal Explorer running virtual CAN FD traffic with the demo DBC.')
 story.append(Spacer(1,16))
-p('Application version 0.1.0 - DBC editor and adapter preferences<br/>Document revision 1.4 - October 31, 2026','Centered')
+p('Application version 0.1.0 - Multi-channel CAN and live transmit lists<br/>Document revision 1.5 - November 2, 2026','Centered')
 note('This guide describes the current source build. Hardware driver integration is not a physical-bus qualification. '
      'NI-XNET USB-8502, native LIN and ValueCAN Ethernet await powered bench verification. Passive PC Ethernet capture has been checked. '
      'Ethernet TX is implemented but awaits physical testing. SENT, CAN XL, signal plotting and installers are not implemented.')
@@ -102,12 +102,12 @@ p('Read this guide alongside Install guide.pdf. Install guide covers deployment;
 # 2 ---------------------------------------------------------------------------
 page('Contents and document scope','contents')
 table(['Section','Pages','Use it for'],[
-    ['<link href="#release_today">October 29 release changes</link>',page_range('release_today'),'File Viewer, scripts, demo echo, branding and timestamp correction.'],
+    ['<link href="#release_nov2">November 2 release changes</link>',page_range('release_nov2'),'Multi-channel CAN, live TX lists and saved selections.'],
     ['<link href="#s1">1. System prerequisites &amp; hardware profile</link>',page_range('s1','ni_profile'),'PC requirements, rates, FD, isolation and NI-XNET scope.'],
     ['<link href="#s2">2. Mandatory driver/software setup</link>',page_range('s2'),'Preparation before USB or bus connection; Npcap.'],
-    ['<link href="#s3">3. Connection &amp; verification</link>',page_range('s3','ni_verify'),'CAN, NI USB-8502, LIN and Ethernet checks.'],
-    ['<link href="#s4">4. Graphical interface reference map</link>',page_range('s4','dbc_editor_map'),'Columns and controls, including the DBC editor.'],
-    ['<link href="#s5">5. Practical workflows</link>',page_range('s5','dbc_editor_workflow'),'DBC editing/decoding, LDF, sending and MF4 replay.'],
+    ['<link href="#s3">3. Connection &amp; verification</link>',page_range('s3','can_channels'),'CAN, NI USB-8502, LIN and Ethernet checks.'],
+    ['<link href="#s4">4. Graphical interface reference map</link>',page_range('s4','tx_signals'),'Columns and controls, including the DBC editor.'],
+    ['<link href="#s5">5. Practical workflows</link>',page_range('s5','tx_workflow'),'DBC editing/decoding, LDF, sending and MF4 replay.'],
     ['<link href="#s6">6. Troubleshooting &amp; fault codes</link>',page_range('s6','timestamp_faults'),'CAN/LIN/Ethernet faults, driver errors and recovery.'],
     ['<link href="#s7">7. Appendix: adapter pinouts</link>',page_range('s7','ethernet_pins'),'CANable, Kvaser, PEAK, Vector, Intrepid, NI and Ethernet.'],
     ['<link href="#cli">7. Appendix: command line and sources</link>',page_range('cli','revision'),'Launch commands, environment settings and source register.'],
@@ -115,7 +115,7 @@ table(['Section','Pages','Use it for'],[
 h('How to read the support statements')
 p('<b>Implemented</b> means there is an application code path. <b>Mock tested</b> means API behavior was checked without electrical traffic. '
   '<b>Physically observed</b> means the specific observation stated was made; it does not imply all rates, adapters or features are qualified.')
-p('This release has 166 passing automated tests, including adapter preferences and DBC editing. Existing CANable reception is distinct from native driver mock coverage. '
+p('This release has 196 passing automated tests, including adapter preferences and DBC editing. Existing CANable reception is distinct from native driver mock coverage. '
   'ValueCAN4-2EL VE0245 and five PC Ethernet interfaces were discovered on the development PC. Passive capture on its active Ethernet port worked; '
   'no application-generated physical Ethernet TX or powered ValueCAN Ethernet/LIN verification was performed.')
 h('Manual conventions')
@@ -138,6 +138,20 @@ table(['Change','Current behavior'],[
     ['Intrepid timestamps','CAN, LIN and Ethernet RX hardware intervals are anchored to host time on each connection, aligning them with local TX timestamps. Invalid replay clock jumps fail preflight.'],
 ], [1.45,4.7], 'Changes implemented October 29, 2026.')
 p('The separate <b>Scripting User\'s Guide.pdf</b> introduces Python and provides commented, downloadable source examples for CAN/MCU tests.','Small')
+
+page('November 2, 2026: release changes','release_nov2')
+table(['Change','Current behavior'],[
+    ['Selective CAN channels','Enable channels... lists physical devices and individual CAN ports. Open only the checked ports, sharing bitrate and Classic/FD timing. Choose one TX channel.'],
+    ['Saved selections','The last device and checked channels are remembered per backend/device for this Windows user. New devices start with their first available channel. Restoration never connects or sends.'],
+    ['Trace defaults','CAN Channel replaces Bus Number. Same-ID traffic stays separate by channel. CAN Auto-scroll starts unchecked: latest-value rows are the default. LIN/Ethernet defaults are unchanged.'],
+    ['Multi-message sender','Separate Send Messages window retains the main single-message sender. Independent raw/DBC rows, once/cyclic sending, per-row channels, FD/BRS and signal waveforms.'],
+    ['Live editing','Edit running rows, bytes, signals, cycle times and channels. Valid changes apply to subsequent sends; invalid changes leave the prior configuration running. An in-flight frame may use old values.'],
+    ['Portable TX lists','Open TX List and Save TX List buttons plus File menu operations save JSON configuration, embedded DBC definitions and waveforms. Loaded lists never start themselves. Clone remains; cut/copy/paste are removed from this window.'],
+    ['Recording and scripts','MF4 preserves separate CAN BusChannel values and an embedded channel map. Python send/recv accept an enabled channel label or native ID. Replay selects one source bus and one TX destination.'],
+], [1.5,4.6], 'November 2 source build; application version remains 0.1.0.')
+h('Validation and hardware scope')
+p('196 automated tests pass. One physical VN1630A test at 500 kbit/s Classic CAN sent standard ID 5A1 on CAN1 and received identical bytes on CAN2. Only those two ports were opened and the session was released afterward. Physical CAN FD and the new transmit-list workflows remain unqualified; FD routing and multi-message behavior use virtual/mock tests.')
+p('The Intrepid neoVI FIRE 3 profile exposes 16 CAN networks and lists 8 LIN networks in inventory. This is mock-tested CAN discovery/routing, not a new FIRE 3 LIN transport. Existing native LIN/Ethernet qualification limits still apply.','Small')
 
 page('1 System prerequisites & hardware profile','s1')
 h('1.1 PC and software prerequisites')
@@ -288,13 +302,26 @@ h('Diagnostics and acceptance status')
 p('<b>Python API unavailable:</b> install .[nixnet] with the same .venv interpreter. <b>Scan failed / DLL missing:</b> repair the 64-bit NI-XNET runtime. <b>No channels:</b> verify USB and NI MAX, then Refresh. <b>Connect failed:</b> check the interface name, rates, termination and competing sessions.')
 p('For bus-off or repeated errors, stop TX, check wiring, two bus-end resistors, reference ground, peer ACK and both FD rates, then Disconnect/reconnect. There is no NI-specific controller-reset button. Automated NI discovery/native conversion and MF4 checks use mocks; physical USB-8502 acceptance is pending.','Small')
 
+page('3.7 Select and remember CAN channels','can_channels')
+figure('can-channels.png','Figure: illustrative four-port Vector selection; only CAN1 and CAN2 are enabled.',230)
+steps(['While disconnected, choose the backend and Refresh devices. Click <b>Enable channels...</b>, select the physical model/serial and check only the required CAN ports. Confirm with OK.',
+       'Set a common arbitration bitrate, Classic/FD mode and FD data bitrate. All enabled ports share these settings. Known non-FD channels are rejected before an FD session opens.',
+       'Connect, then choose one enabled <b>TX channel</b>. Send targets that port only. The trace labels CAN1, CAN2, etc.; other native identifiers are shown when no physical label is available.',
+       'For a correctly wired/terminated CAN1-to-CAN2 loop, send on CAN1 and confirm a CAN2 RX with identical ID/data. A local CAN1 TX row alone is insufficient.'])
+h('Restoration and missing hardware')
+p('The last physical device and checked subset are stored per backend/device in local Qt settings. They survive Refresh, reconnect and relaunch, including changed discovery order. A new device starts with its first channel enabled; the first application run still selects Virtual. No automatic connection or transmission occurs.')
+p('Missing saved ports are excluded while their preference is retained. If every saved port is unavailable, select available ports explicitly before Connect. Cancel leaves settings unchanged. Choosing the ordinary Channel dropdown deliberately replaces the saved subset with that single channel.')
+h('Device inventory boundaries')
+p('FIRE 3 is a CAN inventory/routing profile: 16 CAN networks plus 8 LIN inventory entries. No FIRE 3 LIN transport or electrical/pinout qualification is added. Use its exact vendor manual/harness; ValueCAN pinouts do not apply.','Small')
+p('Vector inventory uses active CAN capabilities, physical port numbers and transceiver names. LIN-only piggies and I/O are excluded; Vector virtual ports are grouped separately. FIRE 3 CAN1-CAN16 use their true network IDs, including values above 255. Its LIN1-LIN8 inventory does not enable LIN sessions here. Unknown Intrepid models retain conservative/manual selection.','Small')
+
 page('4 Graphical interface reference map','s4')
 figure('can.png','Figure 2: CAN/CAN FD view. Demo traffic and decoded values are synthetic.')
 table(['Region','What it contains'],[
-    ['A. Above protocol tabs','Adapter, Channel, Bitrate, Inject demo traffic, Connect/Disconnect, Clear, Start/Pause Exploring, Refresh devices and the conditional Vector DLL control.'],
+    ['A. Above protocol tabs','Adapter, Channel, Enable channels..., Bitrate, Inject demo traffic, Connect/Disconnect, Clear, Start/Pause Exploring, Refresh devices and the conditional Vector DLL control.'],
     ['B. Below CAN tab','CAN FD/data bitrate, conditional NI internal termination, driver notes, filter field, DBC controls and Auto-scroll.'],
     ['C. Central trace','Timestamped history or fixed latest-value rows. Resize column boundaries to reveal long Data or Signals fields. Horizontal scroll exposes FD/BRS/ESI.'],
-    ['D. Under trace','Outgoing message ID, Extended ID, FD frame, BRS, data, interval and Send/Stop.'],
+    ['D. Under trace','TX channel, message ID, Extended ID, FD frame, BRS, data, interval, Send/Stop and Multi-message TX....'],
     ['E. Recording area / bottom','Logging/save/playback, recorded-bus and direction selectors, logger/playback status and CAN RX/TX/visible-row counts.'],
 ], [1.45,4.7], 'Read the CAN window from top to bottom.')
 p('<b>Graphs:</b> there are no plots, gauges, signal charts, bus-load graphs or time cursors in this build. Decoded signals are text in the trace. '
@@ -306,7 +333,7 @@ page('4.1 CAN columns and controls','can_ref')
 table(['Column','Meaning'],[
     ['Timestamp','Seconds with six decimal places from the message timestamp; displayed as a number, not time-of-day. Physical precision depends on the source, not the number of printed digits.'],
     ['Counts','Cumulative displayed observations for channel + ID + standard/extended format since Clear. RX and local TX for that key contribute; not a dropped-frame count.'],
-    ['Bus Number','Native channel identifier, e.g. COM3, an index or PCAN channel name. Not automatically the MDF Recorded bus value.'],
+    ['CAN Channel','Physical channel label, e.g. CAN1/CAN2, or native identifier (COM3, PCAN channel) when no label is known. Separate from the MDF Recorded bus selector.'],
     ['Message ID (hex) / Ext','Arbitration ID; Ext = Y for 29-bit format, blank for 11-bit. Leading zeros do not change the ID.'],
     ['Direction / DLC / Data','RX or local TX; DLC is byte count (python-can convention), not the encoded FD DLC nibble. Data is raw hex bytes.'],
     ['DBC Message / Signals','Matched message name and decoded signal values/units; unknown IDs stay raw, short/invalid payloads show a decode error.'],
@@ -319,7 +346,7 @@ table(['Control','Behavior'],[
     ['Connect / Disconnect','Open or close the selected bus; disconnect also stops repeated sending and playback and finalizes active logging.'],
     ['Clear / Refresh devices / Vector DLL','Clear resets trace/history/counters, not a saved log. Refresh enumerates devices. Vector DLL saves an XL DLL path; restart to load it.'],
     ['Start Exploring / Pause Exploring','Connection starts exploring. Pause freezes trace and display counters while RX draining, TX and logging continue. Paused frames are not backfilled.'],
-    ['Auto-scroll (all messages)','Checked: all observed frames in time order, last 10000 retained. Unchecked: one updated row per channel/ID/format. Toggle preserves recent history.'],
+    ['Auto-scroll (all messages)','Default unchecked: latest row per channel/ID/format. Checked: timestamped history, last 10000 retained. Toggle preserves recent history.'],
     ['Apply filter / Clear filter','Apply hex ID/range expression; Enter also applies. Clear restores all IDs. A filter affects display only; invalid input keeps the previous filter.'],
     ['Load / Unload / Edit DBC','Load decodes rows; Unload returns to raw. Edit opens the database editor (section 4.8); it does not transmit signal values.'],
 ], [1.8,4.3], 'Connection, trace and decoding controls. See sections 5.2 and 5.4 for sending and recording.')
@@ -400,13 +427,13 @@ table(['Control','Meaning'],[
     ['Line delay / Follow execution','Python delay: 0-1000 ms before each source line; changes actual test execution. Follow scrolls to the executing line. Yellow=running, orange=paused, red=failure.'],
     ['Script Output','Print/log messages, PASS/FAIL checks and final outcome. The console retains at most 5000 text blocks. A failed check normally stops the run.'],
 ], [1.55,4.6], 'Script-mode reference. Full API and MCU examples are in the Scripting User\'s Guide.')
-p('Scripts share the existing send/receive/logging path and never need another can.Bus. LIN/Ethernet Python scripting, CAPL conversion and a full UDS/ISO-TP client are not implemented.','Small')
+p('se.can.send/recv accept channel= with an enabled label/native ID; omitted TX uses the main destination and omitted RX accepts all enabled ports. se.session["channels"] lists the map; returned frame.channel is a native string. Scripts share the existing service, not another can.Bus. LIN/Ethernet scripting, CAPL conversion and full UDS/ISO-TP remain future work.','Small')
 
 page('4.7 File Viewer: logfile replay','file_viewer_log')
 figure('log-replay.png','Figure: read-only log viewer paused during replay. RX/TX labels describe the original recording.',280)
 table(['Control','Meaning'],[
     ['Open Logfile','Loads a single-protocol CAN/CAN FD, LIN or Signal Explorer Ethernet MF4. May be opened without a connected adapter. Contents are read-only; Save/Save As are disabled.'],
-    ['Recorded bus / direction','Choose the source BusChannel and RX only, TX only or RX and TX. Selected CAN/Ethernet events become TX on the currently connected destination.'],
+    ['Recorded bus / direction','Choose source BusChannel and recorded RX, TX or both. CAN uses one main TX channel. Starting replay stops GUI cyclic senders; selected events become TX.'],
     ['Replay / Pause / Resume / Stop','Validate the entire selection, then transmit at 1x timing. Pause excludes paused time from the schedule. Stop leaves the connection open; Replay restarts from the beginning.'],
     ['Line delay / Follow execution','In log mode, delay controls highlight refresh only. It never delays transmission. Follow scrolls to the most recently sent original log row.'],
     ['Replay Output','Load, preflight, progress, completion, failure, pause and stopping messages. The main monitor and logger remain independent.'],
@@ -423,6 +450,37 @@ table(['Region / control','Function'],[
     ['DBC preview / Test decoding','Read-only generated DBC text. Enter exactly the selected message\'s byte length in hex for physical values and value labels. This calculation is offline; it sends no frame.'],
 ], [1.45,4.7], 'Open with Edit DBC beside Load DBC / Unload DBC on the CAN screen.')
 p('The editor uses a private database copy. Live monitoring, scripts and recording continue. Unsaved edits do not change decoding; section 5.7 explains save/reload rules and editing limits.','Small')
+
+page('4.9 Multi-message sender: controls','tx_map')
+figure('transmit-list.png','Figure: Send Messages on Virtual CAN FD; the EngineData row is sending cyclically.',255)
+p('Open <b>Transmit &gt; Multi-message sender...</b> or <b>Multi-message TX...</b>. The main single-message sender remains available. This window shares the active CAN service, enabled channels, monitor and logger.')
+table(['Control / columns','Meaning'],[
+    ['Use / Message Name / ID (hex)','Use includes the row in batch actions; clearing it stops that row. Name is a label; ID is hexadecimal.'],
+    ['Channel / Ext / FD / BRS / DLC','One enabled destination or Default TX; standard/extended, frame-level FD and bit-rate switching. DLC is payload byte count.'],
+    ['Send / Cyclic / Cycle (ms)','now sends once. Check Cyclic and press Start for periodic sending; Stop ends it. Checking a box alone never starts traffic.'],
+    ['0-7 / Complete payload','Grid bytes are hexadecimal. Complete payload includes all FD bytes 8-63. Resize DLC first; enter exactly the required byte count.'],
+    ['Sent / Status','Locally accepted send count and row state/error. Acceptance is not peer ACK. One failing row stops independently.'],
+    ['New Raw / New from DBC','Raw frame or a private snapshot of a loaded DBC definition, including scaling, defaults and cycle metadata.'],
+    ['Clone / Delete / file controls','Clone selected configuration with fresh counts, or delete rows. Open TX List / Save TX List also exist under File. No cut/copy/paste controls.'],
+    ['Send All Once / Start Cyclic / Stop All','Batch enabled rows, start enabled cyclic rows, or cancel all queued/scheduled sends. Batch preflight precedes any TX.'],
+], [1.9,4.2], 'Message grid and command bar.',compact=True)
+
+page('4.10 Signal values and live editing','tx_signals')
+h('DBC signal panel')
+p('Select a DBC row. Signal Name, Start Bit and Bits describe its layout. Raw Value and Physical Value are editable numeric values; Unit comes from the DBC. Step is in physical units, used by Dec/Inc. Value labels appear in tooltips. Encoding preserves bits outside active signals and validates scaling, signedness, byte order and ranges.')
+table(['Waveform','Parameters and behavior'],[
+    ['Off','Use the configured value.'],
+    ['Ramp','Increase by Step per cyclic transmit; wrap from maximum to minimum.'],
+    ['Pulse','Alternate physical minimum/maximum at 50% duty over Period (ms).'],
+    ['Sine','Vary between physical minimum/maximum over Period (ms).'],
+], [1,5.1], 'Waveforms advance at each row transmit, not at an independent hardware clock.')
+p('Waveforms restart when a row starts. A one-shot uses its initial waveform value. Multiplexer selectors and inactive mux signals cannot be waveform targets. Manual signal edits disable only that signal waveform; raw byte/full-payload edits disable every waveform in that row. Other existing wave phases continue across live edits.')
+h('Editing a running row')
+p('IDs, channels, Ext/FD/BRS, DLC, bytes, cycle times, signal values and waveform settings remain editable. Enter commits a table cell; leaving Complete payload commits its edited text. Refresh does not replace the field being typed in. A complete edit is validated before atomic application. Invalid changes keep the old configuration running.')
+p('Subsequent sends use the accepted edit. An already dispatched frame can finish with old values; counts continue. A cycle-time edit reschedules the next send. Default TX pins the main destination when sending starts; changing a row channel live retargets subsequent frames. Editing ID, format or DLC can detach its DBC snapshot and waveforms.')
+h('Scheduling and lifecycle')
+p('Stop All, closing this window, CAN disconnect or starting logfile playback stops its schedules. Reopening retains rows in this app session; reconnecting never restarts them. Rechecking Use/Cyclic requires Start. Monitor pause/filtering does not stop TX or exclude it from logging. Python and main-window senders are independent.')
+note('Timing is best effort on the PC. Arbitration, driver latency and competing sends can delay frames; missed cycles are skipped without a catch-up burst. This window does not generate RTR/electrical error frames or provide hardware-timed scheduling.')
 
 page('5 Practical workflows: CAN and DBC','s5')
 h('5.1 Decode a database and filter IDs')
@@ -443,7 +501,7 @@ table(['Field','Classic example','FD example'],[
 p('The interval must be a positive integer, not 100.5 or 0. The first send occurs immediately. Repetition locks its input fields and stops on send error, disconnect or close. '
   'Playback also stops repeated sending. This is host-timed traffic, not deterministic hardware scheduling.')
 note('TX indicates the local adapter accepted a send; it does not prove another CAN node acknowledged or consumed it. Verify the bytes at the peer. '
-     'There is no manual RTR/error-frame transmit control, DBC signal encoder or automatic physical-ECU response logic. The virtual 321/221 demo is a separate synthetic peer.')
+     'DBC signal encoding is available in Multi-message TX.... There is no manual RTR/error-frame generator or automatic physical-ECU response logic. The virtual 321/221 demo is a separate synthetic peer.')
 
 # 13 --------------------------------------------------------------------------
 page('5.3 LIN Master and Slave workflows','lin_workflow')
@@ -468,7 +526,7 @@ note('A LIN master can also publish a response; Slave mode does not transmit com
 # 14 --------------------------------------------------------------------------
 page('5.4 MF4 logging and timed playback','recording')
 h('Record and save')
-steps(['Connect the relevant protocol and Start Logging. Both RX and TX observations are captured before display filtering/pause. A log belongs to that protocol/channel; separate tabs create separate files.',
+steps(['Connect the relevant protocol and Start Logging. Both RX and TX observations are captured before display filtering/pause. A CAN log includes all enabled CAN channels; separate protocol tabs create separate files.',
        'Stop Logging drains/finalizes the MDF4 recording and opens the save dialog. Enter a filename; .mf4 is appended when necessary.',
        'Cancel keeps a finalized temporary recording. Use Save Log... to save it later; a pending unsaved recording blocks starting a new log. Save failures retain the source file.',
        'Disconnect or closing finalizes active logging too. Close waits for recording/playback work and save handling. Temporary files are not a promised power-loss recovery system.'])
@@ -476,7 +534,7 @@ h('Playback controls and meaning')
 table(['Control / status','Effect'],[
     ['Start Logging / Stop Logging','Begins capture or finalizes it. Filtering, Clear and Pause Exploring do not erase or limit logged traffic.'],
     ['Save Log...','Enabled when a finalized recording is pending; save it after cancellation or a failed destination write.'],
-    ['Recorded bus','Selects the file\'s MDF BusChannel, 0-255. Signal Explorer currently maps its single recorded source to bus 1, regardless of native channel text.'],
+    ['Recorded bus','Selects the file\'s MDF BusChannel, 0-255. CAN preserves each enabled channel: Vector CAN1-CAN4 map to buses 1-4, including sparse selections. The embedded session channel map records native IDs and labels.'],
     ['RX + TX / Recorded RX only / Recorded TX only','Selects source observations for replay. Every selected replayable CAN/Ethernet frame becomes TX on the current output; recorded RX is not a passive receive.'],
     ['Playback Log as TX / Stop Playback','CAN/Ethernet: preflight, then best-effort 1x relative timing through the connected output. Virtual Ethernet says Playback Log as Simulated TX. No seek, speed or loop controls.'],
     ['Playback Headers / Replay Response Buffers','LIN Master replays headers with current response configuration. LIN Slave replays timed changes to selected local buffers; the external master still triggers wire TX. Monitor cannot replay.'],
@@ -540,7 +598,22 @@ p('In an empty database add standard Classic CAN message <b>EngineTest</b>, ID <
 h('Save, reload and close')
 p('<b>Save</b> validates and atomically writes the DBC. If that exact file is currently loaded on the CAN screen, a successful save reloads its decoder for existing/new trace rows. <b>Save As</b> to another path does not switch the active decoder. With no active DBC, use <b>Load DBC</b> after saving. New/Open/Close prompt to save dirty work; Cancel leaves the editor open.')
 h('Current editing limits')
-p('Multiplexing and floating-point definitions are preserved but not configured by the basic forms. A multiplexer cannot be renamed, or deleted while dependents remain. Saving uses cantools serialization, so whitespace and ordering may change; text must fit Windows-1252. There is no DBC-based signal transmit encoder.','Small')
+p('Multiplexing and floating-point definitions are preserved but not configured by the basic forms. A multiplexer cannot be renamed, or deleted while dependents remain. Saving uses cantools serialization, so whitespace and ordering may change; text must fit Windows-1252. For live DBC signal encoding use Multi-message TX...; the DBC editor itself remains an offline definition/decoding tool.','Small')
+
+page('5.8 Build, edit and save a TX list','tx_workflow')
+steps(['Connect <b>Virtual (no hardware)</b>, enabling CAN FD before connection if needed. Load examples/demo.dbc. Open Multi-message TX....',
+       'Choose New Raw. Set ID 321 and eight bytes 00 01 02 03 04 05 06 07. Leave Default TX and click now. With demo traffic enabled, the simulated peer returns ID 221 echoing those bytes.',
+       'Choose New from DBC and select EngineData (ID 200). Select its row and set EngineRPM Physical Value to 2000; scaling encodes raw 8000. Set Cycle (ms) to 100, check Cyclic, then press Start.',
+       'While it runs, change EngineRPM or cycle time and commit. Inspect subsequent trace frames. In Virtual mode the demo also publishes ID 200: use Auto-scroll history to distinguish observations by Direction.',
+       'Optionally configure a signal Ramp, Pulse or Sine within DBC ranges. Editing that signal manually disables its waveform; editing raw payload disables all row waveforms. Stop the row or Stop All when finished.',
+       'Click Save TX List and choose a .json name. Close/reopen the sender or use Open TX List. Loading stops prior schedules and restores configuration only; explicitly start the desired rows.'])
+h('Which file belongs to which task?')
+table(['File','Purpose'],[
+    ['DBC','Message layout, scaling and optional cycle metadata; not a complete configured transmission recipe.'],
+    ['Signal Explorer TX list (.json)','Versioned application format: rows, payloads, channel selections, flags, periods, Use/Cyclic, waveforms and embedded DBC definitions. Counts and running state are not restored. Not a universal vendor interchange format.'],
+    ['MF4','Recorded RX/TX evidence and timed replay. Replay is selected recorded bus to one selected TX channel, not a live editable multi-message recipe.'],
+], [1.6,4.5], 'Save configuration separately from test evidence.')
+p('A list accepts up to 256 rows; loading is bounded to 16 MiB and validates the complete document before replacement. Saving replaces the file atomically. DBC snapshots travel with the list; loading a later main DBC does not alter existing rows. Re-add a row from the updated DBC for a changed layout.','Small')
 
 page('6 Troubleshooting: CAN and drivers','s6')
 table(['Symptom / fault','Interpretation and action'],[
@@ -809,14 +882,16 @@ table(['Revision / date','Change'],[
     ['1.1 / October 26, 2026','Ethernet simulation, PC Npcap and ValueCAN4-2EL: installation, discovery, GUI map, sending/filtering, MF4/replay, diagnostics, connectors and validation scope.'],
     ['1.2 / October 29, 2026','Python editor/runner and CAN API; continuous 321/221 demo; File Viewer and read-only timed MF4 replay; SE icon/splash; Intrepid clock alignment and replay discontinuity/timeout fixes. Companion Scripting User\'s Guide and nine source examples added.'],
     ['1.3 / October 30, 2026','NI-XNET USB-8502 Classic/FD integration, interface discovery and internal termination control; driver setup, NI MAX checks, electrical profile, pinouts and mock-test acceptance scope. NI-CAN excluded.'],
+    ['1.5 / November 2, 2026','Selective and remembered CAN channels; CAN Channel trace labels and default latest-value view; live raw/DBC multi-message TX, waveforms and JSON lists; channel-aware Python and MF4 recording/replay. VN1630A Classic loopback verified.'],
     ['1.4 / October 31, 2026','Alphabetical per-protocol adapter lists, Virtual first-run defaults and remembered selections. DBC editor reference, bit layout, offline decoding, editing workflow, validation and save/reload behavior.'],
-], [1.7,4.4], 'Document revision, independent of the application version.')
+], [1.7,4.4], 'Document revision, independent of the application version.',compact=True)
+p('VN1630A serial 604069: one Classic CAN frame at 500 kbit/s, ID 5A1 and bytes A5 5A 01 02 03 04 05 06, was received on CAN2 after CAN1 TX. Physical FD and multi-message qualification remain pending; FIRE 3 inventory/routing uses mocks.','Small')
 p('Signal Explorer is the application name used here. Vendor names identify supported interfaces and source documents; this guide does not imply vendor endorsement, product certification or independent ASAM conformance certification.','Small')
 h('Validation for this edition')
-p('166 automated tests cover adapter preference restoration, DBC editing/validation/save isolation, the existing protocols, NI-XNET discovery/native session conversion and MF4 RX/TX, editor controls, pause/stop, replay direction/timing, log loading, timestamp alignment and the documented script examples. '
+p('196 automated tests cover adapter preference restoration, DBC editing/validation/save isolation, the existing protocols, NI-XNET discovery/native session conversion and MF4 RX/TX, editor controls, pause/stop, replay direction/timing, log loading, timestamp alignment and the documented script examples. '
   'Five examples run against built-in virtual traffic; four MCU templates run against a private mock firmware peer after enabling their contract flag in the test harness. '
   'The default MCU templates are also checked to reject transmission before configuration. Native electrical qualification remains outside these tests.')
-p('The source code, docs/scripting.md, docs/file-viewer.md, examples/scripts/mcu/ and tests/test_scripting_examples.py define the October 29 behavior. '
+p('docs/can-channels.md and docs/transmit-list.md describe the November 2 channel/TX behavior. docs/scripting.md, docs/file-viewer.md and examples/scripts/mcu/ describe testing and replay. '
   'Guide generators and capture scripts are in docs/. Dates above distinguish software/document updates from earlier hardware-source checks.')
 
 class ManualDoc(SimpleDocTemplate):
@@ -835,7 +910,7 @@ def decorate(canvas,doc):
         canvas.line(52,H-41,W-52,H-41)
     canvas.line(52,40,W-52,40)
     canvas.setFont('Helvetica',8)
-    canvas.drawString(52,26,'SIGNAL EXPLORER  |  Revision 1.4  |  October 31, 2026')
+    canvas.drawString(52,26,'SIGNAL EXPLORER  |  Revision 1.5  |  November 2, 2026')
     canvas.drawRightString(W-52,26,str(doc.page))
     canvas.restoreState()
 
@@ -854,4 +929,4 @@ if __name__=='__main__':
         print(f'{i:02} {len(text):4} {title}')
         assert title.replace('&','&') in text.replace('\n',' '),f'Unexpected pagination on page {i}: {title}'
     assert len(reader.pages)==len(pages),'Unexpected overflow page: inspect and adjust layout.'
-    assert len(reader.pages)==40
+    assert len(reader.pages)==45

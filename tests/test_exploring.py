@@ -17,7 +17,7 @@ class Exploring(unittest.TestCase):
     def test_exact_columns_and_bus_distinguishes_same_id(self):
         model = TraceModel(history_mode=False)
         headers = [model.headerData(c, Qt.Orientation.Horizontal) for c in range(model.columnCount())]
-        self.assertEqual(headers, ['Timestamp', 'Counts', 'Bus Number', 'Message ID (hex)',
+        self.assertEqual(headers, ['Timestamp', 'Counts', 'CAN Channel', 'Message ID (hex)',
                                   'Ext', 'Direction', 'DLC', 'Data', 'DBC Message', 'Signals', 'FD', 'BRS', 'ESI'])
         for channel in ('COM3', 'PCAN_USBBUS1'):
             model.append_message(can.Message(timestamp=123.5, arbitration_id=256,
@@ -39,6 +39,7 @@ class Exploring(unittest.TestCase):
         try:
             self.assertEqual(window._explore.text(), 'Start Exploring')
             self.assertFalse(window._explore.isEnabled())
+            window._auto_scroll.setChecked(True)
             window._service.connect_bus(BACKENDS[0], channel, 500000, False)
             self.assertEqual(window._explore.text(), 'Pause Exploring')
             peer.send(can.Message(arbitration_id=256, data=[1]))

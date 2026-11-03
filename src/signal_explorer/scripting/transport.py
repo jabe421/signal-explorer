@@ -62,6 +62,7 @@ class CanScriptTransport(ScriptTransport):
 
     def send(self, parameters):
         message = can.Message(arbitration_id=parameters['arbitration_id'],
+                              channel=parameters.get('channel'),
                               data=bytes.fromhex(parameters['data']),
                               is_extended_id=parameters.get('extended', False),
                               is_fd=parameters.get('fd', False),
@@ -72,6 +73,11 @@ class CanScriptTransport(ScriptTransport):
         return True
 
     def matches(self, event, parameters):
+        channel = parameters.get('channel')
+        if channel is not None:
+            selection = next((c for c in self.service.channels if str(channel) in (str(c['native_channel']), c['label'])), None)
+            if selection is None or str(event['channel']) != str(selection['native_channel']):
+                return False
         if event.get('is_error_frame') or event.get('is_remote_frame'): return False
         identifier = parameters.get('arbitration_id')
         if identifier is not None and event['arbitration_id'] != identifier:return False

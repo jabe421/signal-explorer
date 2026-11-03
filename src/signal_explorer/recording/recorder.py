@@ -94,6 +94,8 @@ class MF4Recorder(QObject):
         corrections = 0
         try:
             writer = self.codec.writer(path, database)
+            if hasattr(writer, 'configure_channels'):
+                writer.configure_channels(metadata.get('channels', []))
             last_timestamp = 0.0
             last_progress = time.monotonic()
             while not self._stopping.is_set() or not self._queue.empty():

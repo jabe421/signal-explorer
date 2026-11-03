@@ -41,16 +41,32 @@ class CANEventWriter:
     def __init__(self, path, database=None):
         self.writer = can.MF4Writer(path, database=database, compression_level=2)
         self.writer._mdf.header.author = "Signal Explorer"
+        self.channel_map = {}
+        self.channel_details = []
+
+    def configure_channels(self, channels):
+        for channel in channels:
+            self.channel_map[str(channel['native_channel'])] = channel['bus_channel']
+            self.channel_details.append(dict(channel))
 
     def write(self, event):
         if event.protocol != "CAN":
             raise ValueError("CAN MDF codec cannot record another protocol.")
         msg = deepcopy(event.payload)
         msg.timestamp = event.timestamp
-        msg.channel = 1  # Single source connection mapped in embedded session metadata.
+        key = str(event.channel)
+        if event.channel is None and self.channel_map:
+            key = next(iter(self.channel_map))
+        if key not in self.channel_map:
+            number = max(self.channel_map.values(), default=0) + 1
+            self.channel_map[key] = number
+            self.channel_details.append(dict(native_channel=key, bus_channel=number, label=key))
+        msg.channel = self.channel_map[key]
         self.writer.on_message_received(msg)
 
     def finish(self, metadata):
+        metadata['channels'] = self.channel_details
+        metadata['bus_channel'] = self.channel_details[0]['bus_channel'] if len(self.channel_details) == 1 else None
         self.writer._mdf.attach(json.dumps(metadata, indent=2).encode(),
                                 file_name="SignalExplorer-session.json", mime="application/json")
         self.writer.stop()

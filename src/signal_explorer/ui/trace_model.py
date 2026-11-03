@@ -3,7 +3,7 @@ from copy import deepcopy
 from collections import deque
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt, QSortFilterProxyModel
 
-_COLUMNS = ("Timestamp", "Counts", "Bus Number", "Message ID (hex)", "Ext", "Direction", "DLC", "Data", "DBC Message", "Signals", "FD", "BRS", "ESI")
+_COLUMNS = ("Timestamp", "Counts", "CAN Channel", "Message ID (hex)", "Ext", "Direction", "DLC", "Data", "DBC Message", "Signals", "FD", "BRS", "ESI")
 
 class TraceModel(QAbstractTableModel):
     def __init__(self, history_mode=True, max_history=10_000):
@@ -17,6 +17,12 @@ class TraceModel(QAbstractTableModel):
         self._rows = self._history if history_mode else self._latest
         self._indices = {}
         self.database = None
+        self.channel_labels = {}
+
+    def set_channel_labels(self, labels):
+        self.channel_labels.update(labels)
+        if self._rows:
+            self.dataChanged.emit(self.index(0, 2), self.index(len(self._rows)-1, 2))
 
     def rowCount(self, parent=QModelIndex()):
         return 0 if parent.isValid() else len(self._rows)
@@ -37,7 +43,7 @@ class TraceModel(QAbstractTableModel):
         if role != Qt.ItemDataRole.DisplayRole:
             return None
         name, signals = self._decode(msg)
-        return (f"{msg.timestamp:.6f}", str(count), str(msg.channel) if msg.channel is not None else "",
+        return (f"{msg.timestamp:.6f}", str(count), self.channel_labels.get(str(msg.channel), str(msg.channel)) if msg.channel is not None else "",
                 f"{msg.arbitration_id:03X}" + (" (Error Frame)" if msg.is_error_frame else ""), "Y" if msg.is_extended_id else "",
                 "RX" if msg.is_rx else "TX", str(msg.dlc),
                 msg.data.hex(" ").upper(), name, signals, "Y" if msg.is_fd else "",

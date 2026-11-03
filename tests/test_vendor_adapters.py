@@ -36,7 +36,8 @@ class VendorAdapters(unittest.TestCase):
         cfg = dict(channel=3, device_name="Kvaser U100-C", serial=1234)
         with patch.dict(canlib.__dict__, {"__canlib": object()}), patch.object(canlib.KvaserBus, "_detect_available_configs", return_value=[cfg]):
             options, note = discover_channels("kvaser")
-        self.assertEqual(options[0].config, {"channel": 3})
+        self.assertEqual(options[0].config, {"channel": 3, "device_serial": '1234',
+                                             "device_name": 'Kvaser U100-C', "channel_label": 'CAN4'})
         self.assertIn("U100", options[0].label)
 
     def test_pcan_dual_channel_discovery_and_absent_hardware(self):

@@ -58,3 +58,12 @@ undo/redo and serialization without Qt, hardware or application dependencies.
 `MainWindow` lazily opens and tracks editor windows, and accepts a saved
 database only when its path matches the loaded DBC. There is no separate
 application or editor connection to `BusService`.
+
+## Using edited definitions for transmission
+
+The DBC editor remains an offline definition/decoding tool. The separate
+[Multi-message TX window](transmit-list.md) can encode numeric signal values
+and waveforms. New from DBC takes a private snapshot of the database loaded
+on the CAN screen. Saving/reloading a DBC does not alter existing TX rows;
+re-add the message when its layout must change. TX-list JSON embeds these
+definitions and restores configuration without starting traffic.

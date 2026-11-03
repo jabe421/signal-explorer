@@ -26,7 +26,7 @@ def page(title,subtitle):
 def link(label,url):
     p(f'<link href="{url}" color="#126C79"><u>{label}</u></link>','SmallSE')
 
-page('Install guide','Signal Explorer | Windows source installation<br/>Version 0.1.0 - DBC editor and adapter preferences<br/>Document revision 1.4 - October 31, 2026')
+page('Install guide','Signal Explorer | Windows source installation<br/>Version 0.1.0 - Multi-channel CAN and live TX lists<br/>Document revision 1.5 - November 2, 2026')
 p('This guide installs the current Python desktop application on another PC. A standalone installer will be addressed later. You need internet access for the initial Python package downloads and any required driver downloads.')
 h('1. Prepare the PC and project files')
 p('Install <b>64-bit Python 3.12</b> and its Python launcher. This is the version used on the development PC. The project declares Python 3.11 or later, but other versions have not been validated here.')
@@ -70,7 +70,7 @@ story.append(PageBreak())
 page('Verify and troubleshoot','A short check before connecting to a live CAN bus.')
 h('1. Verify the software without hardware')
 p('Launch Signal Explorer, select <b>Virtual</b>, enable <b>Inject demo traffic</b>, and click <b>Connect</b>. The trace should show ID 100 with changing data. Load <b>examples/demo.dbc</b> to display the demo message name and decoded signals.')
-p('Auto-scroll (all messages) is checked by default and shows timestamped history. Uncheck it for the latest data per channel and ID. History retains the most recent 10,000 frames. <b>Pause Exploring</b> freezes trace updates while staying connected; <b>Start Exploring</b> resumes. Frames received while paused are not replayed.')
+p('CAN Auto-scroll defaults unchecked: latest data per channel and ID. Check it for timestamped history. History retains the most recent 10,000 frames. <b>Pause Exploring</b> freezes trace updates while staying connected; <b>Start Exploring</b> resumes. Frames received while paused are not replayed.')
 h('2. Verify hardware reception')
 p('Connect the adapter by USB, choose its backend and channel, set the correct bus bitrate, and click Connect. Use a powered, correctly wired and terminated CAN bus with a device that is transmitting. Check the RX count. Click Clear filter if frames might be hidden. Merely connecting USB does not generate CAN traffic.')
 h('Common issues')
@@ -83,7 +83,7 @@ p('<b>Missing DLL or no detected channels:</b> install the vendor\'s 64-bit API 
 h('Optional automated checks')
 p('For optional checks, copy tests and install the test dependencies with pip install ".[dev,intrepid]" in this .venv. From the project root run:')
 code('.\\.venv\\Scripts\\python.exe -m pytest tests -q')
-p('166 automated checks pass, including adapter preferences, DBC editing and NI-XNET mocks. USB-8502 traffic, Ethernet TX and powered ValueCAN LIN/Ethernet await bench tests.','SmallSE')
+p('196 automated checks pass, including adapter preferences, DBC editing and NI-XNET mocks. USB-8502 traffic, Ethernet TX and powered ValueCAN LIN/Ethernet await bench tests.','SmallSE')
 h('Logging and playback')
 p('Click <b>Start Logging</b> to record RX and TX; <b>Stop Logging</b> finalizes the MDF4 file and opens a save dialog. Cancelling retains it for <b>Save Log...</b>. Logging continues while the trace is paused or filtered. <b>Playback Log as TX</b> replays a selected recorded bus/direction at best-effort 1x timing through the connected adapter; <b>Stop Playback</b> stops it. Physical timing and third-party interoperability are not yet qualified.')
 h('Current scope')
@@ -183,7 +183,7 @@ page('DBC editor & adapter defaults','October 31, 2026 | Source update and offli
 h('1. Update the existing installation')
 p('Close Signal Explorer, preserving unsaved scripts, DBC changes and logs. Update the source and reinstall from the project root with the same .venv interpreter. The DBC editor uses the existing Qt and cantools packages; no new runtime dependency, external editor, license server or vendor driver is required for offline editing.')
 code('.\\.venv\\Scripts\\python.exe -m pip install .\n# Preserve both optional vendor integrations when needed:\n.\\.venv\\Scripts\\python.exe -m pip install ".[intrepid,nixnet]"')
-p('Use -e before the package selector for an editable development install. Keep the complete src/signal_explorer/dbc and ui folders when copying source. The companion Scripting User\'s Guide is unchanged by this release.','SmallSE')
+p('Use -e before the package selector for an editable development install. Keep the complete src/signal_explorer/dbc and ui folders when copying source. The companion scripting guide now also covers enabled-channel selection in test code.','SmallSE')
 h('2. Adapter selection on launch')
 p('Adapter dropdowns are alphabetical in CAN, LIN and Ethernet. On the first run of each protocol, the virtual adapter is selected even if hardware is connected. Later launches remember that protocol\'s last selected adapter for this Windows user profile. CAN/LIN remember the backend family; Ethernet remembers the NIC/device identity, not its list index.')
 p('Restoring a selection never connects automatically. Use Refresh to discover current hardware and select the channel and bus parameters before Connect. If the saved Ethernet device is missing or unavailable, the app selects Virtual while retaining the saved identity for a later Refresh. These preferences are local Qt settings, separate from the project and .venv; copying the project to another PC does not copy them.')
@@ -196,6 +196,22 @@ h('Limits and recovery')
 p('Invalid or overlapping/out-of-payload signals are rejected. Use Undo/Redo for accepted edits. Test decoding needs exactly the selected message\'s byte length. Motorola uses DBC sawtooth start-bit numbering; do not assume Intel positions. Multiplexing/float definitions are preserved but not configured by the basic forms. Text must fit Windows-1252; serialization can change formatting. The editor does not encode/transmit signal values.')
 p('The User\'s Guide contains the complete editor control map and practical workflow. docs/dbc-editor.md describes its save isolation and module boundaries. Physical adapter qualification is unchanged.','SmallSE')
 
+story.append(PageBreak())
+page('Multi-channel CAN & transmit lists','November 2, 2026 | Update and verify without changing drivers')
+h('1. Update the source installation')
+p('Close Signal Explorer and save pending files. Update the complete source tree and reinstall with the same .venv interpreter and existing optional extras. No new runtime dependency or vendor driver is required for these features. Existing CANable, Vector, Intrepid, Kvaser, PEAK and NI backends remain available.')
+code('.\\.venv\\Scripts\\python.exe -m pip install ".[intrepid,nixnet]"')
+p('Use -e for an editable installation; omit extras you do not use. Keep the new bus/multichannel.py, bus/intrepid_channels.py, bus/transmit.py, ui/can_channels.py and ui/transmit_window.py modules when copying source. The PDF builders require reportlab/pypdf only for documentation generation.','SmallSE')
+h('2. Verify settings and channel discovery')
+p('On first launch select Virtual; subsequent launches restore the last backend. CAN now remembers the last physical device and enabled subset per backend/device. Choose Enable channels..., check the intended ports, and confirm. All checked channels share bitrate and Classic/FD settings. Unsupported known FD channels are rejected. Connect and choose one TX channel; no broadcast occurs.')
+p('Settings are local to the Windows user, separate from .venv and portable TX lists. Missing channels retain their saved preference; if none are available, choose explicitly before Connect. Restoration never connects or sends. The ordinary Channel dropdown replaces the saved subset with one channel. CAN Auto-scroll now defaults unchecked (latest-value rows); LIN/Ethernet defaults are unchanged.')
+h('3. Verify the new sender in simulation')
+p('Connect Virtual with demo traffic and load examples/demo.dbc. Open Multi-message TX.... New Raw, ID 321, eight bytes 00 01 02 03 04 05 06 07, then now should produce an RX 221 echo. Add EngineData from DBC, set Cyclic and 100 ms, then Start. Edit RPM or bytes while sending and check subsequent frames. Stop All ends scheduled/queued sends.')
+p('Save TX List creates an application-specific JSON configuration, including embedded DBC definitions and waveforms. Open TX List restores it without starting traffic. Both buttons also exist under File. Clone remains; cut/copy/paste were removed from this window. MF4 remains the recording/replay format, not the TX-list format.')
+h('4. Hardware acceptance and recording scope')
+p('VN1630A serial 604069: one standard ID 5A1 frame, A5 5A 01 02 03 04 05 06, was sent CAN1 to CAN2 at 500 kbit/s Classic CAN with both ports enabled; matching RX and no errors were observed. The session was released. Physical FD and new multi-message workflows remain pending. FIRE 3 inventory/routing is mock tested: 16 CAN plus 8 LIN listed; this does not add FIRE 3 LIN transport.')
+p('196 automated tests pass. MF4 now preserves enabled CAN source channels and an embedded map. Replay selects one recorded bus and one main TX channel, stopping periodic GUI senders first. Python send/recv can target an enabled label/native channel; see the updated scripting guide. No automatic multi-bus replay or hardware-clock synchronization is added.','SmallSE')
+
 def decorate(canvas,doc):
     w,h=letter
     canvas.setStrokeColor(colors.HexColor('#126C79'))
@@ -203,7 +219,7 @@ def decorate(canvas,doc):
     canvas.line(43,h-29,w-43,h-29)
     canvas.setFont('Helvetica',8)
     canvas.setFillColor(colors.HexColor('#446170'))
-    canvas.drawString(43,25,'SIGNAL EXPLORER  /  INSTALL GUIDE  /  REV 1.4  /  OCT 31, 2026')
+    canvas.drawString(43,25,'SIGNAL EXPLORER  /  INSTALL GUIDE  /  REV 1.5  /  NOV 2, 2026')
     canvas.drawRightString(w-43,25,str(doc.page))
 
 doc=SimpleDocTemplate(str(output),pagesize=letter,rightMargin=43,leftMargin=43,topMargin=46,bottomMargin=43,title='Install guide - Signal Explorer',author='Signal Explorer')
@@ -214,4 +230,4 @@ print('Pages:',len(r.pages))
 for i,page in enumerate(r.pages,1):
     text=page.extract_text()
     print(i, len(text),text[:60].replace('\n',' '))
-assert len(r.pages)==9, 'Unexpected pagination; inspect layout'
+assert len(r.pages)==10, 'Unexpected pagination; inspect layout'

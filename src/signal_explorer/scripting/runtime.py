@@ -141,12 +141,12 @@ class CanFrame:
 class CanClient:
     def __init__(self, control): self.control = control
 
-    def send(self, arbitration_id, data=b'', *, extended=False, fd=False, brs=False):
+    def send(self, arbitration_id, data=b'', *, extended=False, fd=False, brs=False, channel=None):
         """Send once through Signal Explorer. data accepts bytes or an iterable."""
         return self.control.rpc('send', dict(arbitration_id=arbitration_id, data=bytes(data).hex(),
-                                             extended=extended, fd=fd, brs=brs))
+                                             extended=extended, fd=fd, brs=brs, channel=channel))
 
-    def recv(self, timeout=1.0, *, arbitration_id=None, extended=None, direction='rx'):
+    def recv(self, timeout=1.0, *, arbitration_id=None, extended=None, direction='rx', channel=None):
         """Return a matching frame or None at timeout. None timeout waits until stopped.
 
         Unmatched events are consumed from this script's independent mailbox.
@@ -156,7 +156,7 @@ class CanClient:
             raise ValueError('Receive timeout must be nonnegative, finite, or None.')
         if direction not in ('rx', 'tx', 'all'): raise ValueError('Direction must be rx, tx or all.')
         result = self.control.rpc('recv', dict(timeout=timeout, arbitration_id=arbitration_id,
-                                               extended=extended, direction=direction))
+                                               extended=extended, direction=direction, channel=channel))
         if result is None: return None
         result = dict(result); result.pop('protocol', None); result['data'] = bytes.fromhex(result['data'])
         return CanFrame(**result)

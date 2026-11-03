@@ -42,6 +42,7 @@ class ReceivePath(unittest.TestCase):
     def test_slcan_serial_frames_reach_both_views_and_filter_clear(self):
         window = MainWindow()
         fake = FakeSerial()
+        window._auto_scroll.setChecked(True)
         backend = replace(next(b for b in BACKENDS if b.key == 'slcan'),
                           extra_kwargs={'sleep_after_open': 0, 'tty_baudrate': 115200})
         try:

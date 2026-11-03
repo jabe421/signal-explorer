@@ -88,7 +88,7 @@ story.append(Image(str(ROOT/'src/signal_explorer/assets/signal-explorer-splash.p
 story.append(Spacer(1,20))
 p('SIGNAL EXPLORER','Cover');p("Scripting User's Guide",'Cover')
 p('Basic Python for CAN / CAN FD and MCU testing','Center')
-p('Application 0.1.0 | Document revision 1.0<br/>October 29, 2026','Center')
+p('Application 0.1.0 | Document revision 1.1<br/>November 2, 2026','Center')
 story.append(Spacer(1,14))
 p('Learn the editor, send and receive frames, validate responses, check counters and signals, and build repeatable MCU tests. Nine commented example files accompany this guide.','Center')
 note('This guide uses the current injected <b>se</b> API. Python scripting is CAN/CAN FD only. The generic MCU protocol is fictional and must match your test firmware; the built-in virtual demo is a separate, smaller protocol.')
@@ -96,9 +96,9 @@ note('This guide uses the current injected <b>se</b> API. Python scripting is CA
 page('Contents and example map','contents')
 sections=[('1 First run without hardware','quick'),('2 Editor and execution controls','editor'),
     ('3 Python values, bytes and basic control flow','python_values'),('4 CAN API, timing and results','api'),
-    ('5 Built-in simulation tests','echo'),('6 MCU contract and bench templates','contract'),
+    ('4.2 Explicit CAN-channel testing','channels'),('5 Built-in simulation tests','echo'),('6 MCU contract and bench templates','contract'),
     ('7 Limited UDS single-frame example','uds_scope'),('8 Reusable test patterns','patterns'),
-    ('9 Logging, replay and timestamps','evidence'),('10 Troubleshooting and practical limits','troubleshoot'),
+    ('9 Logging, replay and timestamps','evidence'),('9.1 TX lists and channel-aware evidence','tx_evidence'),('10 Troubleshooting and practical limits','troubleshoot'),
     ('Appendix: source files, glossary and references','appendix')]
 for label,anchor in sections:
     cell=Paragraph('pending',styles['Cell']);toc_rows.append((cell,anchor))
@@ -200,13 +200,13 @@ p('Standard modules such as struct, json and pathlib are available. Saved script
 page('4 Signal Explorer CAN scripting API','api')
 table(['API','Meaning and units'],[
     ['se.protocol','Currently "CAN". Selecting another main tab does not switch the Python transport.'],
-    ['se.session','Run-start metadata snapshot: interface, adapter, native_channel, fd, bitrates and simulated flag. It does not reconfigure hardware.'],
+    ['se.session','Run-start metadata: interface, adapter, native_channel, channels mapping, fd, bitrates and simulated flag. It does not reconfigure hardware.'],
     ['se.is_simulated','True only for the connected Virtual CAN session. Use as a guard for built-in demo scripts.'],
     ['se.log(value)','Append a message to Script Output. print(...) is captured too.'],
     ['se.check(condition, description)','Print PASS/FAIL; a false condition normally terminates execution with an assertion.'],
     ['se.sleep(milliseconds)','Interruptible, pause-aware wait. Not a hardware scheduler.'],
-    ['se.can.send(id, data, ...)', 'Send once. Optional keyword flags: extended=False, fd=False, brs=False. Uses the connected adapter, channel and FD validation. Raises on failure.'],
-    ['se.can.recv(timeout=1.0, ...)', 'Wait in seconds; None waits until a match or Stop. Returns CanFrame or None. Filters: arbitration_id, extended and direction (rx, tx or all). Default direction is rx.'],
+    ['se.can.send(id, data, ...)', 'Send once. Options: extended=False, fd=False, brs=False, channel=None (enabled label or native ID). Uses the connected adapter, channel and FD validation. Raises on failure.'],
+    ['se.can.recv(timeout=1.0, ...)', 'Wait in seconds; None waits until a match or Stop. Returns CanFrame or None. Filters: arbitration_id, extended, direction (rx, tx or all), channel (enabled label/native ID). Default direction is rx.'],
 ],(1.45,3.55))
 code('''se.can.send(0x321, bytes(range(8)))
 reply = se.can.recv(2.0, arbitration_id=0x221,
@@ -233,6 +233,28 @@ h('Timing claims')
 p('Loops that send then sleep add processing time to the nominal sleep. A se.sleep(100) request is not a guarantee of an exact 100 ms hardware period. '
   'Use the main repeated-send control or an appropriate hardware scheduler when exact traffic timing is the test stimulus. Log scheduling delay and verify wire timing independently.')
 note('Trace pause/filter does not pause scripts or logging. Script Pause does not stop the MCU, other manual transmit controls, replay or periodic demo traffic. Stop cannot retract an already accepted frame or guarantee MCU cleanup.')
+
+page('4.2 Test explicitly enabled CAN channels','channels')
+p('Enable the needed channels in the main CAN window before Connect. The script shares that connection; it does not open adapters or change bitrates. Optional channel accepts a label such as CAN1 or a native channel identifier. Omitting send channel uses the current main TX destination; omitting receive channel accepts any enabled source.')
+code("""# Inspect the run-start snapshot before writing a channel-specific test.
+for port in se.session.get("channels", []):
+    se.log(port)
+
+# For a correctly wired CAN1-to-CAN2 bench loop only.
+# Configure both ports at 500 kbit/s Classic CAN in the main window.
+labels = {p["label"] for p in se.session.get("channels", [])}
+se.check({"CAN1", "CAN2"} <= labels, "Both ports enabled")
+payload = bytes.fromhex("A5 5A 01 02 03 04 05 06")
+se.can.send(0x5A1, payload, channel="CAN1")
+reply = se.can.recv(1.0, arbitration_id=0x5A1,
+                    extended=False, direction="rx", channel="CAN2")
+se.check(reply is not None, "CAN2 received frame")
+se.check(reply.data == payload, "Loopback bytes match")""")
+h('Native identifiers and labels')
+p('se.session["channels"] contains each port native_channel, label and bus_channel mapping. CanFrame.channel remains the native identifier as a string; it is not always the display label CAN1. Match through recv(channel=...) or consult the snapshot instead of assuming a numeric offset. Disabled destinations are rejected; sends are not broadcast.')
+h('FD and virtual test boundaries')
+p('Existing scripts without channel arguments continue to work. FD and BRS still require an FD-enabled connection with compatible timing on every enabled port. The built-in single Virtual CAN demo is not an electrical two-port loopback. Use its 321/221 echo examples for hardware-free checks; use the example above only with the corresponding bench wiring.')
+p('One VN1630A CAN1-to-CAN2 Classic CAN frame was physically verified November 2. FD routing and multi-channel mailbox/recording behavior use virtual/mock tests; no physical FD result is implied.','Small')
 
 page('5 Continuous 321/221 echo demo','echo')
 p('The menu example starts at 00 01 02 03 04 05 06 07 and increments every byte only after a verified response. IDs are standard hexadecimal 321 and 221. The built-in peer runs only on Virtual CAN with Inject demo traffic enabled.')
@@ -401,6 +423,21 @@ p('<b>Line delay differs by mode:</b> Python delay slows real source execution; 
 p('<b>Timestamp correction:</b> Intrepid CAN/LIN/Ethernet now anchor hardware RX intervals to PC time on each connection, matching local TX\'s epoch. Earlier logs mixing device/PC clocks can have irrecoverably flattened intervals. '
   'Create fresh recordings after updating. Preflight rejects selected gaps over 24 hours before any TX; valid gaps are not compressed and there is no Skip gaps option.','Small')
 
+page('9.1 TX lists, channel maps and test isolation','tx_evidence')
+h('Keep three different artifacts')
+table(['Artifact','Purpose'],[
+    ['Python (.py)','Executable checks, sequencing, response matching and PASS/FAIL logic.'],
+    ['TX list (.json)','Signal Explorer-specific raw/DBC message configuration, channel, period and waveform settings. It is not Python and not a universal interchange format.'],
+    ['DBC / MF4','DBC defines message layouts/scaling. MF4 records RX/TX observations with timestamps and source channels. Save both test configuration and evidence when needed.'],
+],(1.2,3.8))
+h('Background traffic is independent')
+p('Multi-message TX... opens a separate sender. Its running rows can be edited live; accepted edits affect later sends, with an in-flight frame possibly retaining old bytes. The Python editor still locks during a running script so source-line highlighting stays accurate. No Python API was added to create, edit or stop GUI transmit-list rows.')
+p('Python Pause/Stop does not pause independent multi-message or main-window traffic. Monitor Pause Exploring and ID filters affect display, not TX or recording. Stop GUI cyclic traffic yourself before a test that requires an otherwise quiet bus. Starting CAN logfile replay stops the main repeat sender and multi-message schedules; disconnecting stops the script and those schedules.')
+h('Record and replay the intended source')
+p('Start Logging before a script to capture RX/TX from all enabled CAN channels. The MF4 session attachment includes channels with native IDs, labels and recorded BusChannel values. Vector CAN1-CAN4 map to buses 1-4 even for nonadjacent selections; other backends use reported labels or selection order.')
+p('For replay, choose one Recorded bus, RX/TX direction and one enabled main TX channel. Every selected replayable observation becomes TX on that destination at best-effort original timing. Replaying both a local TX and its looped-back RX can duplicate the same payload: select the intended direction and source. This is not automatic synchronized multi-channel rebroadcast.')
+note('TX counters report local API acceptance, not peer acknowledgement. Validate the expected RX ID, channel, bytes and transaction fields. Separate hardware clocks are not synchronized by a shared file or by the script runner.')
+
 page('10 Troubleshooting and practical limits','troubleshoot')
 table(['Symptom','Check or next action'],[
     ['NameError: se is not defined','Open/run inside Signal Explorer, not python example.py in a terminal. se is injected by the runner.'],
@@ -448,16 +485,16 @@ p('UDS/ISO-TP references were checked October 29, 2026. They explain protocols, 
 
 page('Appendix: validation and next steps','validation')
 h('What was checked for this edition')
-p('145 automated tests cover the application and guide examples. All nine new sources compile. The five virtual examples run through the actual separate-process scripting runner with the built-in demo. '
+p('196 automated tests cover the application and guide examples, including channel-aware routing and live TX lists. All nine tutorial sources compile. The five virtual examples run through the actual separate-process scripting runner with the built-in demo. '
   'The four MCU templates are checked both for their default no-transmit guard and against a private virtual mock firmware peer after enabling the contract flag in the test harness. '
   'The UDS mock emits ResponsePending then a final positive reply; an out-of-range ADC value is also checked to fail the GPIO/ADC test.')
 p('These mock peers live in tests/test_scripting_examples.py and are not a second firmware simulator exposed by the GUI. The test harness does not change the shipped templates\' default guard. '
   'No new physical adapter/MCU qualification is claimed by these software checks.')
 h('Run checks from the project root')
-code('''.\\.venv\\Scripts\\python.exe -m unittest discover -s tests -v
-# Only the new guide examples (PowerShell line continuation):
-.\\.venv\\Scripts\\python.exe -m unittest discover -s tests `
-    -p test_scripting_examples.py -v''',python=False)
+code('''.\\.venv\\Scripts\\python.exe -m pytest tests -q
+# Only the guide examples (PowerShell line continuation):
+.\\.venv\\Scripts\\python.exe -m pytest `
+    tests/test_scripting_examples.py -q''',python=False)
 p('The backtick continues the second PowerShell command onto the next line. See the Install Guide for environment/Intrepid optional package setup. Documentation regeneration uses reportlab and pypdf; those are not additional runtime dependencies for the examples.','Small')
 h('A useful first MCU test suite')
 steps(['Start with one status/heartbeat arrival check and a known firmware-version response.',
@@ -466,7 +503,7 @@ steps(['Start with one status/heartbeat arrival check and a known firmware-versi
        'Add reboot recovery, expected command rejection and explicit timeouts.',
        'Store test and firmware revisions alongside MF4 evidence, then verify on the intended physical adapter.'])
 note('SENT, LIN/Ethernet Python scripting, automatic CAPL translation, complete UDS/ISO-TP, fixture power control and integrated test-report export remain future work. Standard Python can write your own report files, but the application does not supply a report API in this release.')
-p('Revision 1.0 - October 29, 2026. Companion to User Guide revision 1.2 and Install Guide revision 1.2.','Small')
+p('Revision 1.1 - November 2, 2026. Adds enabled-channel tests, TX-list interaction and multi-channel evidence. Companion to User and Install Guide revision 1.5.','Small')
 
 
 class ManualDoc(SimpleDocTemplate):
@@ -481,7 +518,7 @@ def decorate(canvas,doc):
         canvas.setFont('Helvetica-Bold',9);canvas.drawString(52,H-36,"Signal Explorer Scripting User's Guide")
         canvas.line(52,H-41,W-52,H-41)
     canvas.line(52,40,W-52,40);canvas.setFont('Helvetica',8)
-    canvas.drawString(52,26,'SIGNAL EXPLORER  |  Revision 1.0  |  October 29, 2026')
+    canvas.drawString(52,26,'SIGNAL EXPLORER  |  Revision 1.1  |  November 2, 2026')
     canvas.drawRightString(W-52,26,str(doc.page));canvas.restoreState()
 
 if __name__=='__main__':
@@ -497,4 +534,4 @@ if __name__=='__main__':
         print(f'{index:02} {len(text):4} {title}')
         assert title in text.replace('\n',' '),f'Unexpected pagination at page {index}: {title}'
     assert len(pdf.pages)==len(pages),'Unexpected overflow page'
-    assert len(pdf.pages)==24
+    assert len(pdf.pages)==26

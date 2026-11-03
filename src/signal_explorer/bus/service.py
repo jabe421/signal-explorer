@@ -14,6 +14,7 @@ from signal_explorer.bus.canfd import fd_configuration, validate_frame
 from signal_explorer.bus.ownership import DeviceLease
 from signal_explorer.bus.demo import demo_frames, demo_reply
 from signal_explorer.bus.timestamps import HardwareClock
+from signal_explorer.bus.multichannel import native_channel, open_channels
 
 
 class _Reader(QThread):
@@ -57,6 +58,8 @@ class BusService(QObject):
         self._send_lock = RLock()
         self.session_info = {}
         self._channel = None
+        self.channels = []
+        self.tx_channel = None
         self.fd_enabled = False
         self._rx_clock = None
         self._demo_bus: can.BusABC | None = None
@@ -88,6 +91,7 @@ class BusService(QObject):
             "channel": _typed_channel(backend.interface, channel),
         }
         kwargs.update(backend.extra_kwargs)
+        configs = (device_config or {}).get('channels') or [dict(device_config or {}, channel=(device_config or {}).get('channel', channel))]
         if device_config:
             for key in ("channel", "serial", "channel_index", "app_name"):
                 if key in device_config:
@@ -106,6 +110,12 @@ class BusService(QObject):
             kwargs.setdefault("tty_baudrate", 115200)
 
         try:
+            primary_channel = native_channel(backend.interface, kwargs['channel'])
+            for cfg in configs:
+                if cfg.get('can_termination') and cfg.get('can_term_available') is False:
+                    raise ValueError('An enabled NI channel has no internal termination.')
+                if fd and cfg.get('supports_fd') is False:
+                    raise ValueError('An enabled channel does not support CAN FD. Disable that channel or use Classic CAN.')
             if (backend.interface == "nixnet" and kwargs["can_termination"]
                     and (device_config or {}).get("can_term_available") is False):
                 raise ValueError("The selected NI channel has no internal termination. Use external termination.")
@@ -115,7 +125,8 @@ class BusService(QObject):
                 kwargs.update(fd_configuration(backend.interface, bitrate, data_bitrate))
             if backend.interface in {'vector', 'neovi'}:
                 self._device_lease = DeviceLease(backend.interface, kwargs.get('serial'), 'CAN')
-            self._bus = can.Bus(**kwargs)
+            self._bus = (open_channels(can.Bus, backend.interface, configs, kwargs)
+                         if len(configs) > 1 else can.Bus(**kwargs))
         except Exception as exc:  # noqa: BLE001 — surface any vendor/driver failure in the UI
             self._bus = None
             if self._device_lease:
@@ -129,11 +140,19 @@ class BusService(QObject):
 
         self.fd_enabled = fd
         self._rx_clock = HardwareClock() if backend.interface == 'neovi' else None
-        self._channel = kwargs["channel"]
+        self._channel = primary_channel
+        self.channels = [dict(native_channel=native_channel(backend.interface, cfg['channel']),
+                              label=cfg.get('channel_label', str(cfg['channel'])),
+                              bus_channel=(int(cfg['channel']) + 1 if backend.interface == 'vector' else
+                                           int(cfg['channel_label'][3:]) if cfg.get('channel_label', '').startswith('CAN')
+                                           and cfg['channel_label'][3:].isdigit() else index + 1))
+                         for index, cfg in enumerate(configs)]
+        self.tx_channel = self._channel
         self.session_info = dict(adapter=backend.label, interface=backend.interface,
                                  native_channel=str(self._channel), bitrate=bitrate, fd=fd,
                                  data_bitrate=data_bitrate if fd else None,
                                  serial=(device_config or {}).get("serial"))
+        self.session_info['channels'] = self.channels
         if backend.interface == "nixnet":
             self.session_info["can_termination"] = kwargs["can_termination"]
             self.session_info["serial"] = (device_config or {}).get("device_serial")
@@ -159,7 +178,13 @@ class BusService(QObject):
             except Exception as exc:  # noqa: BLE001
                 self.error.emit(f"Demo injector failed: {exc}")
 
-        self.connected.emit(f"{backend.label} · {channel}")
+        self.connected.emit(f"{backend.label} · " + ', '.join(c['label'] for c in self.channels))
+
+    def select_tx_channel(self, channel):
+        selected = next((c for c in self.channels if str(channel) in (str(c['native_channel']), c['label'])), None)
+        if selected is None:
+            raise ValueError('TX channel is not enabled.')
+        self.tx_channel = selected['native_channel']
 
     def _on_received_message(self, msg):
         if msg.channel is None:
@@ -171,7 +196,7 @@ class BusService(QObject):
         captured = copy(msg)
         if self._rx_clock is not None:
             captured.timestamp = self._rx_clock.to_unix(msg.timestamp)
-        if captured.channel is None:
+        if captured.channel is None or len(self.channels) == 1:
             captured.channel = self._channel
         self.traffic.emit(captured)
         return captured
@@ -182,7 +207,13 @@ class BusService(QObject):
                 if self._bus is None:
                     raise RuntimeError("Connect before sending a message.")
                 validate_frame(msg, self.fd_enabled)
-                self._bus.send(msg, timeout=0.2)
+                target = self.tx_channel if msg.channel is None else msg.channel
+                selected = next((c for c in self.channels if str(target) in (str(c['native_channel']), c['label'])), None)
+                if selected is None:
+                    raise ValueError('TX channel is not enabled. Select one enabled CAN channel.')
+                outgoing = copy(msg)
+                outgoing.channel = selected['native_channel']
+                self._bus.send(outgoing, timeout=0.2)
             except Exception as exc:
                 if report_errors:
                     self.error.emit(f"Send failed: {exc}")
@@ -190,7 +221,7 @@ class BusService(QObject):
             echo = copy(msg)
             echo.timestamp = time.time()
             echo.is_rx = False
-            echo.channel = self._channel
+            echo.channel = outgoing.channel
             self.traffic.emit(echo)
         self.message.emit(echo)
         return True
@@ -212,6 +243,8 @@ class BusService(QObject):
             self._reader.wait(1000)
             self._reader = None
         self._rx_clock = None
+        self.channels = []
+        self.tx_channel = None
 
         with self._send_lock:
             if self._bus is not None:

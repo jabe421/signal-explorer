@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from PySide6.QtCore import QSettings, QTimer, Qt
 from PySide6.QtGui import QAction
-from signal_explorer.ui.adapter_preferences import AdapterPreference
+from signal_explorer.ui.adapter_preferences import AdapterPreference, CanChannelPreferences, can_channel_key, can_device_key
 from pathlib import Path
 from signal_explorer.bus.discovery import discover_channels
+from signal_explorer.ui.can_channels import CanChannelsDialog, device_key, channel_label
 from PySide6.QtWidgets import (
     QCheckBox,
     QFileDialog,
@@ -60,9 +61,10 @@ class MainWindow(QMainWindow):
         self._script_controller = ScriptController(self._script_transport, self)
         self._script_windows = []
         self._dbc_windows = []
+        self._transmit_window = None
 
         self._exploring = False
-        self._model = TraceModel()
+        self._model = TraceModel(history_mode=False)
         self._repeat_message = None
         self._tx_timer = QTimer(self)
         self._tx_timer.setTimerType(Qt.TimerType.PreciseTimer)
@@ -82,6 +84,10 @@ class MainWindow(QMainWindow):
                                 ('Open Logfile', self._open_logfile),
                                 ('Open CAN Simulation Example', self._open_demo_script)):
             action=QAction(title,self);action.triggered.connect(callback);scripts.addAction(action)
+        transmit = self.menuBar().addMenu('Transmit')
+        sender_action = QAction('Multi-message sender...', self)
+        sender_action.triggered.connect(self._open_transmit_window)
+        transmit.addAction(sender_action)
         self._backend = QComboBox()
         for spec in sorted(BACKENDS, key=lambda spec: spec.label.casefold()):
             self._backend.addItem(spec.label, spec.key)
@@ -92,6 +98,17 @@ class MainWindow(QMainWindow):
         self._channel = QComboBox()
         self._channel.setEditable(True)
         self._channel.setMinimumWidth(140)
+        self._channel.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self._channel.setMinimumContentsLength(18)
+        self._channel.setMaximumWidth(360)
+        self._enabled_can_configs = []
+        self._saved_channels_unavailable = False
+        self._channel_options = []
+        self._channel.currentIndexChanged.connect(self._reset_channel_selection)
+        self._channel.currentIndexChanged.connect(lambda _: self._channel.lineEdit().setCursorPosition(0))
+        self._channel.editTextChanged.connect(self._reset_channel_selection)
+        self._channels_button = QPushButton('Enable channels...')
+        self._channels_button.clicked.connect(self._choose_can_channels)
         self._bitrate = QComboBox()
         for rate in BITRATES:
             self._bitrate.addItem(f"{rate // 1000} kbit/s", rate)
@@ -130,6 +147,7 @@ class MainWindow(QMainWindow):
             bar.addWidget(QLabel(label))
             bar.addWidget(widget)
         bar.addWidget(self._demo)
+        bar.addWidget(self._channels_button)
         bar.addWidget(self._connect)
         bar.addWidget(self._clear)
         self._explore = QPushButton("Start Exploring")
@@ -186,7 +204,7 @@ class MainWindow(QMainWindow):
         for widget in (QLabel("ID filter"), self._filter, apply_filter, clear_filter, load_dbc, unload_dbc, edit_dbc, self._dbc_label):
             filters.addWidget(widget)
         self._auto_scroll = QCheckBox("Auto-scroll (all messages)")
-        self._auto_scroll.setChecked(True)
+        self._auto_scroll.setChecked(False)
         self._auto_scroll.setToolTip("Checked: timestamped message history with auto-scroll. Unchecked: latest data per CAN ID without scrolling.")
         self._auto_scroll.toggled.connect(self._toggle_trace_mode)
         filters.addWidget(self._auto_scroll)
@@ -195,6 +213,10 @@ class MainWindow(QMainWindow):
 
         send_bar = QHBoxLayout()
         self._tx_id = QLineEdit("100")
+        self._tx_channel = QComboBox()
+        self._tx_channel.setMinimumWidth(90)
+        self._tx_channel.setEnabled(False)
+        self._tx_channel.currentIndexChanged.connect(self._select_tx_channel)
         self._tx_id.setMaximumWidth(120)
         self._tx_extended = QCheckBox("Extended ID")
         self._tx_data = QLineEdit("01 02 03 04 05 06 07 08")
@@ -209,10 +231,13 @@ class MainWindow(QMainWindow):
         self._send = QPushButton("Send")
         self._send.setEnabled(False)
         self._send.clicked.connect(self._send_message)
-        for widget in (QLabel("Send ID (hex)"), self._tx_id, self._tx_extended, self._tx_fd, self._tx_brs,
+        for widget in (QLabel('TX channel'), self._tx_channel, QLabel("Send ID (hex)"), self._tx_id, self._tx_extended, self._tx_fd, self._tx_brs,
                        QLabel("Data (hex)"), self._tx_data,
                        QLabel("Interval (ms)"), self._tx_interval, self._send):
             send_bar.addWidget(widget)
+        self._multi_send = QPushButton('Multi-message TX...')
+        self._multi_send.clicked.connect(self._open_transmit_window)
+        send_bar.addWidget(self._multi_send)
         root.addLayout(send_bar)
         self._recording_panel = RecordingPanel(self._service, self)
         self._recording_panel.playback_changed.connect(self._on_playback_changed)
@@ -297,6 +322,10 @@ class MainWindow(QMainWindow):
         self._channel.blockSignals(True)
         self._channel.clear()
         self._discovery_note = ""
+        self._channel_options = []
+        self._enabled_can_configs = []
+        self._saved_channels_unavailable = False
+        self._channels_button.setText('Enable channels...')
         if spec.needs_serial:
             ports = list_serial_ports()
             for device, description in ports:
@@ -309,14 +338,87 @@ class MainWindow(QMainWindow):
                 self._channel.setCurrentIndex(match)
         elif spec.interface in {"vector", "neovi", "kvaser", "pcan", "nixnet"}:
             options, self._discovery_note = discover_channels(spec.interface)
+            self._channel_options = options
             for option in options:
                 self._channel.addItem(option.label, option.config)
+            preferences = CanChannelPreferences(spec.interface)
+            preferred_device = preferences.last_device()
+            index = next((i for i, option in enumerate(options) if device_key(option) == preferred_device), 0)
+            if options:
+                self._channel.setCurrentIndex(index)
+                self._restore_enabled_channels(options[index])
             if not options:
                 self._channel.setEditText(spec.default_channel)
         else:
             self._channel.addItem(spec.default_channel, spec.default_channel)
             self._channel.setEditText(spec.default_channel)
         self._channel.blockSignals(False)
+        self._channel.lineEdit().setCursorPosition(0)
+        self._channel.setToolTip(self._channel.currentText())
+        self._channels_button.setEnabled(bool(self._channel_options))
+
+    def _restore_enabled_channels(self, option):
+        saved = CanChannelPreferences(self._current_backend().interface).channels(device_key(option))
+        if saved is None:
+            return
+        matches = [o for key in saved for o in self._channel_options
+                   if device_key(o) == device_key(option) and can_channel_key(o.config) == key]
+        self._enabled_can_configs = [dict(o.config, channel_label=channel_label(self._current_backend().interface, o.config)) for o in matches]
+        self._saved_channels_unavailable = not matches
+        if matches:
+            self._channel.setCurrentIndex(self._channel_options.index(matches[0]))
+            self._channels_button.setText(f'{len(matches)} channels enabled')
+        else:
+            self._channels_button.setText('Saved channels unavailable')
+
+    def _reset_channel_selection(self, *_):
+        self._enabled_can_configs = []
+        self._saved_channels_unavailable = False
+        self._channels_button.setText('Enable channels...')
+        selected = self._channel.currentData()
+        if isinstance(selected, dict) and self._channel.currentText() == self._channel.itemText(self._channel.currentIndex()):
+            option = next((o for o in self._channel_options if o.config == selected), None)
+            if option:
+                CanChannelPreferences(self._current_backend().interface).save(device_key(option), [selected])
+
+    def _choose_can_channels(self):
+        selected = self._channel.currentData()
+        current = self._enabled_can_configs or ([selected] if isinstance(selected, dict) else [])
+        if self._saved_channels_unavailable:
+            current = []
+        dialog = CanChannelsDialog(self._channel_options, self._current_backend().interface, current, self)
+        if dialog.exec():
+            configs = dialog.selected_configs
+            index = next((i for i in range(self._channel.count()) if isinstance(self._channel.itemData(i), dict)
+                          and self._channel.itemData(i).get('channel') == configs[0]['channel']
+                          and self._channel.itemData(i).get('serial') == configs[0].get('serial')), -1)
+            if index >= 0:
+                self._channel.blockSignals(True)
+                self._channel.setCurrentIndex(index)
+                self._channel.blockSignals(False)
+            self._enabled_can_configs = configs
+            self._saved_channels_unavailable = False
+            option = next(o for o in self._channel_options if o.config['channel'] == configs[0]['channel']
+                          and can_device_key(o.config) == can_device_key(configs[0]))
+            CanChannelPreferences(self._current_backend().interface).save(device_key(option), configs)
+            self._channels_button.setText(f'{len(configs)} channels enabled')
+            self._channel.lineEdit().setCursorPosition(0)
+            self._sync_ni_controls()
+
+    def _open_transmit_window(self):
+        if self._transmit_window is None:
+            from signal_explorer.ui.transmit_window import TransmitWindow
+            self._transmit_window = TransmitWindow(self._service, lambda:self._model.database,
+                                                   lambda:self._recording_panel.playback_busy, self)
+            self._recording_panel.playback_changed.connect(self._transmit_window.playback_changed)
+        self._transmit_window.show()
+        self._transmit_window.raise_()
+        self._transmit_window.activateWindow()
+        return self._transmit_window
+
+    def _select_tx_channel(self, *_):
+        if self._service.is_connected and self._tx_channel.currentData() is not None:
+            self._service.select_tx_channel(self._tx_channel.currentData())
 
     def _channel_value(self) -> str:
         data = self._channel.currentData()
@@ -353,6 +455,9 @@ class MainWindow(QMainWindow):
             self._service.disconnect_bus()
             return
         spec = self._current_backend()
+        if self._saved_channels_unavailable:
+            QMessageBox.warning(self, 'CAN channels', 'The saved CAN channels are unavailable. Use Enable channels to choose available channels before connecting.')
+            return
         bitrate = int(self._bitrate.currentData())
         channel = self._channel_value()
         if not channel:
@@ -363,10 +468,32 @@ class MainWindow(QMainWindow):
         config = selected if isinstance(selected, dict) and self._channel.currentText() == self._channel.itemText(self._channel.currentIndex()) else None
         if spec.interface == "nixnet":
             config = dict(config or {}, can_termination=self._termination.isChecked())
+        if self._enabled_can_configs:
+            configs = [dict(c) for c in self._enabled_can_configs]
+            if spec.interface == 'nixnet':
+                for c in configs:
+                    c['can_termination'] = self._termination.isChecked()
+            config = dict(configs[0], channels=configs)
         self._service.connect_bus(spec, channel, bitrate, inject, device_config=config,
                                   fd=self._fd.isChecked(), data_bitrate=int(self._data_bitrate.currentData()))
 
     def _on_connected(self, label: str) -> None:
+        selected = self._channel.currentData()
+        option = next((o for o in self._channel_options if o.config == selected), None)
+        if option:
+            preferences = CanChannelPreferences(self._current_backend().interface)
+            if preferences.channels(device_key(option)) is None:
+                preferences.save(device_key(option), [selected])
+            else:
+                preferences.remember_device(device_key(option))
+        self._channels_button.setEnabled(False)
+        self._tx_channel.blockSignals(True)
+        self._tx_channel.clear()
+        for cfg in self._service.channels:
+            self._tx_channel.addItem(cfg['label'], cfg['native_channel'])
+        self._tx_channel.blockSignals(False)
+        self._tx_channel.setEnabled(True)
+        self._model.set_channel_labels({str(c['native_channel']): c['label'] for c in self._service.channels})
         self._sync_ni_controls()
         self._explore.setEnabled(True)
         self._set_exploring(True)
@@ -382,6 +509,7 @@ class MainWindow(QMainWindow):
         self._status.setText(f"Connected · {label}")
 
     def _on_disconnected(self) -> None:
+        self._tx_channel.setEnabled(False)
         self._set_exploring(False)
         self._explore.setEnabled(False)
         self._stop_repeated_send()
@@ -547,6 +675,7 @@ class MainWindow(QMainWindow):
                                          else "0-8 hexadecimal bytes, e.g. DE AD BE EF")
 
     def _set_repeat_controls(self, running):
+        self._tx_channel.setEnabled(self._service.is_connected and not running and not self._recording_panel.playback_busy)
         for widget in (self._tx_id, self._tx_extended, self._tx_data, self._tx_interval):
             widget.setEnabled(not running)
         self._sync_fd_controls()
@@ -576,6 +705,8 @@ class MainWindow(QMainWindow):
         QMessageBox.warning(self, "Signal Explorer", text)
 
     def closeEvent(self, event) -> None:  # noqa: N802
+        if self._transmit_window is not None and not self._transmit_window.request_close_for_main():
+            event.ignore();return
         for window in list(self._dbc_windows):
             if not window.close():
                 event.ignore(); return
@@ -589,6 +720,8 @@ class MainWindow(QMainWindow):
         if not can_ready or not lin_ready or not ethernet_ready:
             event.ignore()
             return
+        if self._transmit_window is not None:
+            self._transmit_window.shutdown()
         self._service.disconnect_bus()
         self._lin.service.disconnect_bus()
         self._ethernet.service.disconnect_bus()

@@ -35,7 +35,7 @@ class RecordingPanel(QWidget):
         self.source_bus = QSpinBox()
         self.source_bus.setRange(0, 255)
         self.source_bus.setValue(1)
-        self.source_bus.setToolTip("Recorded MDF BusChannel to send through the currently connected adapter/channel.")
+        self.source_bus.setToolTip("Recorded MDF BusChannel to send through the selected TX channel. Replay selects one source bus and one destination.")
         self.direction = QComboBox()
         for label, key in (("RX + TX", "all"), ("Recorded RX only", "rx"), ("Recorded TX only", "tx")):
             self.direction.addItem(label, key)

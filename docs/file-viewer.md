@@ -27,7 +27,7 @@ this does not add ASC, BLF, CSV or PCAP import.
 ## Replay to an adapter or virtual device
 
 1. Connect the destination in the corresponding CAN / CAN FD, LIN, or Ethernet tab.
-   The connected channel is the replay destination; opening a file does not connect
+   For CAN, the main **TX channel** selects one enabled replay destination; opening a file does not connect
    or configure an adapter.
 2. Choose **File Viewer > Open Logfile** and select the recording.
 3. Set **Recorded bus** to the source BusChannel to replay. The first available
@@ -93,3 +93,13 @@ Ethernet continues to use Signal Explorer's application-specific MDF frame schem
 Native port and adapter behavior is the same as the main tab's Playback function.
 
 For Python editing and execution, see [scripting.md](scripting.md).
+
+## Multi-channel CAN update (November 2, 2026)
+
+MF4 CAN recordings preserve individual BusChannel values. The embedded
+`SignalExplorer-session.json` contains native channel IDs, labels and recorded
+bus mapping. Vector CAN1-CAN4 map to recorded buses 1-4, including sparse
+selections. Select one source Recorded bus and one main TX channel; the viewer
+does not broadcast an entire multi-bus recording to multiple destinations.
+Starting replay stops the main repeated sender and multi-message TX schedules.
+Loaded TX-list JSON files belong in the Send Messages window, not Open Logfile.

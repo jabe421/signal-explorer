@@ -98,7 +98,8 @@ se.sleep(100)
 
 - `se.protocol`: currently `"CAN"`.
 - `se.session`: connection metadata snapshot, including adapter, native channel,
-  `fd`, bitrates, interface and simulation flag.
+  `fd`, bitrates, interface and simulation flag. The `channels` list contains
+  `native_channel`, `label` and recorded `bus_channel` for each enabled port.
 - `se.is_simulated`: true only for the selected Virtual CAN session.
 - `se.log(value)`: append a message; ordinary `print(...)` is captured too.
 - `se.check(condition, description)`: record PASS or FAIL. Failure raises
@@ -106,9 +107,9 @@ se.sleep(100)
   to continue collecting checks; the recorded failure still makes the final
   verdict FAILED. Unhandled standard Python exceptions also fail the run.
 - `se.sleep(milliseconds)`: interruptible wait, with elapsed pause time excluded.
-- `se.can.send(arbitration_id, data=b"", extended=False, fd=False, brs=False)`:
+- `se.can.send(arbitration_id, data=b"", extended=False, fd=False, brs=False, channel=None)`:
   validates and sends one message through the service; raises on failure.
-- `se.can.recv(timeout=1.0, arbitration_id=None, extended=None, direction="rx")`:
+- `se.can.recv(timeout=1.0, arbitration_id=None, extended=None, direction="rx", channel=None)`:
   return a matching `CanFrame`, or None at timeout. `timeout=None` waits until a
   match or Stop. Direction is `"rx"`, `"tx"` or `"all"`; received frames are the
   default, so a local TX echo is not mistaken for an ECU response. Error/remote
@@ -117,8 +118,19 @@ se.sleep(100)
 
 `CanFrame` provides `arbitration_id`, immutable `data` bytes, `timestamp`, `channel`,
 `direction`, `is_extended_id`, `is_fd`, `bitrate_switch`, `is_error_frame` and
-`is_remote_frame`. All sends use the current session, bus/channel and FD policy;
-scripts do not select or reconfigure hardware.
+`is_remote_frame`. `CanFrame.channel` is the native identifier as a string.
+The optional send/recv `channel` accepts an enabled label (e.g. `"CAN1"`) or
+native ID. Omitted send channel uses the current main TX destination; omitted
+receive channel accepts any enabled port. Scripts select among already enabled
+ports, but do not open adapters or change bus timing. Disabled TX is rejected.
+See [can-channels.md](can-channels.md) for a CAN1-to-CAN2 loopback example.
+
+The [multi-message sender](transmit-list.md) is independent of Python Pause/Stop.
+Stop its cyclic rows before tests that require a quiet bus. Its rows support live
+editing; the Python source editor still locks during execution. No scripting API
+for configuring the TX window is provided. MF4 logging captures all enabled CAN
+channels before display filters/pause; replay selects one recorded bus and one
+TX destination. See [recording.md](recording.md) for channel maps.
 
 ## Pause, Stop and execution boundaries
 

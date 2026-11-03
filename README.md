@@ -1,6 +1,21 @@
 # Signal Explorer
 
 Desktop tool for connecting to automotive buses and inspecting live traffic.
+
+**Multi-message TX...** opens a separate CAN/CAN FD transmit list while preserving
+the single-message sender. Configure per-row channel, ID, FD/BRS, payload and
+cycle time; send once or run independent cyclic schedules. The lower pane edits
+DBC signals and defines ramps, pulses and sine waves. Live editing, Clone and
+Open TX List / Save TX List buttons are included alongside the File menu.
+See [docs/transmit-list.md](docs/transmit-list.md).
+
+**Selective multi-channel CAN/CAN FD:** choose **Enable channels...**, select
+the physical device and check only the channels to open. **TX channel** routes
+once/repeated sends and replay to one enabled channel. The **CAN Channel** trace
+column identifies CAN1, CAN2, etc.; same-ID traffic remains separate by channel.
+Enabled channels are remembered per device for reconnects and future launches.
+See [docs/can-channels.md](docs/can-channels.md) for the VN1630 loopback workflow,
+FD settings, Intrepid FIRE 3 inventory, MF4 channel mapping and scripting.
 Supports Classic CAN / CAN FD adapters, a simulated LIN workbench, experimental native Vector, Intrepid and PEAK LIN backends, and Ethernet monitoring/transmission with simulation, PC Ethernet ports and Intrepid ValueCAN4-2EL.
 
 Python test scripts can now run against the connected CAN / CAN FD session in a
@@ -23,9 +38,12 @@ recorded timing, with Pause/Resume/Stop and highlighted rows. Line delay control
 highlight refresh only, preserving transmission timing. See
 [docs/file-viewer.md](docs/file-viewer.md) for log viewing and replay.
 Ethernet and LIN Python scripting are reserved for a later release. The PDF
-Install and User guides were updated October 31, 2026 for the DBC editor and
-remembered adapter selections, retaining the NI-XNET / USB-8502 setup.
-The companion scripting guide retains the October 29 scripting release.
+All three PDF guides were updated November 2, 2026 for selective/remembered CAN
+channels, the live multi-message sender, JSON TX lists, channel-aware scripting
+and MF4 recording/replay. CAN Auto-scroll defaults off; LIN/Ethernet defaults
+are unchanged. Earlier DBC editor and NI-XNET setup instructions are retained.
+See [release notes](docs/release-notes.md) for the complete November 2 change list
+and hardware validation scope.
 
 See [Users Guide.pdf](Users%20Guide.pdf) for operation, UI reference, workflows,
 troubleshooting and model-specific connector maps, and [Install Guide.pdf](Install%20Guide.pdf)
@@ -162,9 +180,10 @@ Add a new adapter by extending `BACKENDS` in `src/signal_explorer/bus/backends.p
 
 ## Live monitor and transmit
 
-The monitor defaults to timestamped history with **Auto-scroll (all messages)**
-checked. Every frame gets a row. Uncheck it to display one fixed row per CAN ID
-and standard/extended format, updating data, timestamp, direction and count.
+The CAN monitor defaults to **Auto-scroll (all messages)** unchecked, displaying
+one fixed row per channel, CAN ID and standard/extended format while updating
+data, timestamp, direction and count. Check it for timestamped history with one
+row per frame and automatic scrolling.
 Toggle any time: capture, filters and DBC decoding continue in both modes, and
 switching back restores the most recent 10,000 frames. Older history is discarded
 to bound memory usage.
@@ -184,7 +203,8 @@ Clear resets the display and frame count.
 - **Load DBC:** select a local `.dbc` file to show message names and decoded
   signals with units. Existing rows are decoded too. Unmatched IDs stay raw;
   short or invalid payloads display a decode error without stopping capture.
-  Unload DBC returns to raw display. DBC-based transmit editing is not included.
+  Unload DBC returns to raw display. DBC signal transmit editing is available in
+  the separate Multi-message TX window.
 
 For a hardware-free check, select Virtual, enable Inject demo traffic and
 connect. Load `examples/demo.dbc` to decode ID `100`. Send ID `200` with data
@@ -196,7 +216,8 @@ Run feature checks with `.\.venv\Scripts\python.exe -m pytest tests -q` (install
 
 All original adapters (CANable SLCAN and gs_usb, Kvaser, Virtual) remain available.
 Use **Refresh devices** after plugging in an adapter. Select an adapter before
-choosing its physical channel. The app currently opens one channel at a time.
+choosing its physical channel(s). Use **Enable channels...** to select a subset
+on one device, or the ordinary Channel dropdown for one manual/detected port.
 
 ### Intrepid ValueCAN / neoVI
 
@@ -245,10 +266,10 @@ physical U100-C / PCAN-USB Pro FD traffic tests await the actual hardware.
 
 ## Exploring controls and trace columns
 
-Columns, from left to right: Timestamp, Counts, Bus Number, Message ID (hex),
-Ext, Direction, DLC, Data, DBC Message, Signals, FD, BRS, ESI. Bus Number displays the native
-adapter channel identifier (e.g. COM3, a zero-based Vector/Kvaser channel index,
-or a PCAN channel name). Fixed-row counts distinguish channel, ID and format.
+Columns, from left to right: Timestamp, Counts, CAN Channel, Message ID (hex),
+Ext, Direction, DLC, Data, DBC Message, Signals, FD, BRS, ESI. CAN Channel displays
+physical labels such as CAN1/CAN2 when discovered, otherwise the native channel
+identifier (e.g. COM3 or a PCAN channel name). Fixed-row counts distinguish channel, ID and format.
 
 Connecting starts monitoring as before. Click **Pause Exploring** to freeze the
 trace and its counters while keeping the adapter connected. The button becomes
@@ -315,7 +336,7 @@ original. Disconnect and normal application close also finalize and prompt;
 cancelling a save during close keeps the app open.
 
 Use **Playback Log as TX** to select a raw CAN MDF4 recording. Choose the recorded
-bus number (our logs use bus 1), and RX + TX / recorded RX only / recorded TX only.
+bus number (single-channel recordings normally use bus 1), and RX + TX / recorded RX only / recorded TX only.
 The selected traffic is sent through the **currently connected output channel**
 at 1x recorded relative timing. The button becomes **Stop Playback**. Playback
 validates the complete selected stream before sending, stops repeated manual
@@ -330,8 +351,9 @@ MF4 extension. They are produced by python-can's MF4Writer / asammdf. A DBC load
 at recording start is embedded; raw frames remain available without it. An
 embedded `SignalExplorer-session.json` records the original adapter/channel,
 bitrates, source serial when available, numeric bus mapping and any incomplete
-recording/timestamp correction information. Source channel names such as COM3 are
-mapped to MDF BusChannel 1 because the current app opens one source at a time.
+recording/timestamp correction information. Enabled channels are mapped to
+separate MDF BusChannel values, with the mapping embedded in session metadata;
+Vector CAN1/CAN2 map to buses 1/2. See docs/can-channels.md for replay routing.
 
 This is ASAM-format implementation, **not an ASAM certification or a guarantee
 of compatibility with every external MDF producer/consumer**. Files have been

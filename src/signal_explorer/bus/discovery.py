@@ -53,7 +53,10 @@ def discover_channels(interface):
                 configs = canlib.KvaserBus._detect_available_configs()
                 options = [ChannelOption(
                     f"{cfg.get('device_name', 'Kvaser')} | serial {cfg.get('serial', '?')} | channel {cfg['channel']}",
-                    {"channel": cfg["channel"], **({"supports_fd": cfg["supports_fd"]} if "supports_fd" in cfg else {})}) for cfg in configs]
+                    {"channel": cfg["channel"], "device_serial": str(cfg.get('serial', '?')),
+                     "device_name": cfg.get('device_name', 'Kvaser'),
+                     "channel_label": f"CAN{cfg.get('dongle_channel', cfg['channel'] + 1)}",
+                     **({"supports_fd": cfg["supports_fd"]} if "supports_fd" in cfg else {})}) for cfg in configs]
                 vendor = "Kvaser"
             else:
                 from can.interfaces.pcan import PcanBus
@@ -74,11 +77,16 @@ def discover_channels(interface):
             configs = canlib.VectorBus._detect_available_configs()
             options = []
             for cfg in configs:
-                name = cfg["vector_channel_config"].name
+                hardware = cfg["vector_channel_config"]
+                name = hardware.name
+                transceiver = getattr(hardware, 'transceiver_name', '')
                 options.append(ChannelOption(
-                    f"{name} | serial {cfg['serial']} | CAN {cfg['channel'] + 1}",
+                    f"{name} | serial {cfg['serial']} | CAN {cfg['channel'] + 1}" + (f" | {transceiver}" if transceiver else ''),
                     {"channel": cfg["channel"], "serial": cfg["serial"],
                      "channel_index": cfg["channel_index"], "app_name": None,
+                     **(dict(device_name=name.rsplit(' Channel ', 1)[0],
+                             channel_label=f"CAN{cfg['channel'] + 1}", transceiver=transceiver)
+                        if transceiver else {}),
                      **({"supports_fd": cfg["supports_fd"]} if "supports_fd" in cfg else {})}))
             return options, f"{len(options)} Vector CAN channels detected." if options else "No Vector CAN channels detected. Check USB and Vector drivers."
         if interface == "neovi":
@@ -87,17 +95,15 @@ def discover_channels(interface):
             options = []
             for device in ics.find_devices():
                 serial = NeoViBus.get_serial_number(device)
-                # Other Intrepid models accept manual network IDs; only known
-                # ValueCAN4 variants receive automatic physical channel choices.
                 name = device.Name
-                networks = ["HSCAN"]
-                if "ValueCAN4" in name:
-                    networks += ["HSCAN2"] if "-1" not in name else []
-                    if "-4" in name:
-                        networks += ["HSCAN3", "HSCAN4"]
-                for network in networks:
+                from signal_explorer.bus.intrepid_channels import can_networks
+                networks, lin_count = can_networks(ics, device)
+                for network, label, netid in networks:
                     options.append(ChannelOption(f"{name} | {serial} | {network}",
-                                                 {"channel": network, "serial": serial, **({"supports_fd": False} if "ValueCAN3" in name else {})}))
+                                                 {"channel": network, "serial": serial,
+                                                  "device_name": name, "channel_label": label,
+                                                  "network_id": netid, "lin_channel_count": lin_count,
+                                                  **({"supports_fd": False} if "ValueCAN3" in name else {})}))
             return options, f"{len(options)} Intrepid CAN channels detected." if options else "No Intrepid devices detected. Check USB and Intrepid drivers."
     except ImportError as exc:
         hint = "Install the intrepid optional dependency." if interface == "neovi" else "Install the vendor's matching API and drivers."

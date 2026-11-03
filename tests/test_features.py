@@ -78,14 +78,17 @@ class Features(unittest.TestCase):
         model.set_history_mode(True)
         self.assertEqual(model.rowCount(), 0)
 
-    def test_checkbox_defaults_to_history_and_controls_scrolling(self):
+    def test_checkbox_defaults_to_latest_values_and_controls_scrolling(self):
         from unittest.mock import patch
         window = MainWindow()
         try:
             window._set_exploring(True)
-            self.assertTrue(window._auto_scroll.isChecked())
+            self.assertFalse(window._auto_scroll.isChecked())
+            self.assertFalse(window._model.history_mode)
             with patch.object(window._table, 'scrollToBottom') as scroll:
                 window._on_message(can.Message(arbitration_id=256, data=[1]))
+                self.assertEqual(scroll.call_count, 0)
+                window._auto_scroll.setChecked(True)
                 self.assertEqual(scroll.call_count, 1)
                 window._auto_scroll.setChecked(False)
                 window._on_message(can.Message(arbitration_id=256, data=[2]))
