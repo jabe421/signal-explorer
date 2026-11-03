@@ -1,0 +1,48 @@
+SIGNAL EXPLORER - FIRST WINDOWS TEST BUILD
+
+Python, Qt and application Python libraries are included. Do not install Python
+or run pip on the tester's PC. Simulation works without adapter drivers.
+
+Hardware drivers remain separate. This installer does not install, update or
+uninstall vendor drivers, Npcap, or the user's existing Python installation.
+Install only the vendor software required for your hardware, following the
+vendor's connection/restart instructions. Use Windows x64 drivers/APIs.
+
+Vector CAN / LIN: Vector hardware drivers and XL Driver Library.
+https://www.vector.com/int/en/products/products-a-z/libraries-drivers/xl-driver-library/
+
+Intrepid ValueCAN / neoVI: Intrepid hardware drivers and native API.
+https://intrepidcs.com/support/
+
+Kvaser CAN: Kvaser CANlib drivers.
+https://kvaser.com/download/
+
+PEAK CAN / LIN: PEAK hardware driver plus PCAN-Basic / PLIN-API as appropriate.
+https://www.peak-system.com/Downloads.76.0.html?&L=1
+
+NI USB-8502: NI-XNET with NI MAX. USB-8473 / NI-CAN is not supported.
+https://www.ni.com/en/support/downloads/drivers/download.ni-xnet.html
+
+CANable SLCAN: USB serial device/COM port. candleLight/gs_usb: suitable WinUSB
+and libusb support for the exact firmware. Changing USB drivers can affect
+other applications; use the board vendor's instructions.
+
+Native PC Ethernet capture: Npcap, installed separately under its own license.
+Npcap redistribution/silent installation requires the appropriate OEM license.
+https://npcap.com/
+
+Read the included Install Guide and Users Guide for adapter-specific setup,
+power, pinouts, timing and hardware validation limits. CAN FD requires compatible
+hardware and network timing. LIN and ValueCAN Ethernet also need bench power.
+
+The first build is unsigned and intended for controlled beta testing. Confirm
+its origin and SHA256 checksum before use. Company policy may require IT approval.
+Hardware behavior is not qualified by passing simulation checks.
+
+Examples and manuals are installed beside the app. Save edited scripts,
+databases, TX lists and recordings under Documents\Signal Explorer or another
+writable folder. Uninstall preserves user data, settings and shared drivers.
+
+Script tests use the bundled Python environment and its included modules.
+Arbitrary third-party pip packages are not dynamically installed by the editor;
+request additional packages in a future tested application build.
