@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QStatusBar,
-    QTableView,
+    QTreeView,
     QVBoxLayout,
     QWidget,
     QTabWidget,
@@ -34,7 +34,8 @@ from signal_explorer.bus.backends import (
 )
 from signal_explorer.bus.service import BusService
 from signal_explorer.bus.canfd import FD_INTERFACES, DATA_BITRATES, validate_frame
-from signal_explorer.ui.trace_model import TraceModel, IdFilter
+from signal_explorer.ui.trace_model import SignalTreeModel, IdFilter
+from signal_explorer.ui.signal_tree_view import SignalTreeView
 from signal_explorer.ui.recording_panel import RecordingPanel
 from signal_explorer.ui.lin_panel import LinPanel
 from signal_explorer.ui.ethernet_panel import EthernetPanel
@@ -64,7 +65,7 @@ class MainWindow(QMainWindow):
         self._transmit_window = None
 
         self._exploring = False
-        self._model = TraceModel(history_mode=False)
+        self._model = SignalTreeModel(history_mode=False)
         self._repeat_message = None
         self._tx_timer = QTimer(self)
         self._tx_timer.setTimerType(Qt.TimerType.PreciseTimer)
@@ -162,14 +163,17 @@ class MainWindow(QMainWindow):
         bar.addWidget(self._vector_dll)
         bar.addStretch()
 
-        self._table = QTableView()
+        self._table = SignalTreeView()
         self._proxy = IdFilter(self)
         self._proxy.setSourceModel(self._model)
         self._table.setModel(self._proxy)
+        self._proxy.filteringAboutToChange.connect(self._table.collapseAll)
+        self._table.setUniformRowHeights(True)
+        self._table.expanded.connect(lambda index: self._model.set_expanded(self._proxy.mapToSource(index), True))
+        self._table.collapsed.connect(lambda index: self._model.set_expanded(self._proxy.mapToSource(index), False))
         self._table.setAlternatingRowColors(True)
-        self._table.verticalHeader().setVisible(False)
-        self._table.setSelectionBehavior(QTableView.SelectionBehavior.SelectRows)
-        self._table.horizontalHeader().setStretchLastSection(True)
+        self._table.setSelectionBehavior(QTreeView.SelectionBehavior.SelectRows)
+        self._table.header().setStretchLastSection(True)
         self._table.setColumnWidth(0, 165)
         self._table.setColumnWidth(3, 175)
         self._table.setColumnWidth(7, 210)
