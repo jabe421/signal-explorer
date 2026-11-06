@@ -44,6 +44,8 @@ from signal_explorer.scripting.transport import CanScriptTransport
 from signal_explorer.scripting.controller import ScriptController
 from signal_explorer.ui.script_window import ScriptWindow
 from signal_explorer.ui.log_window import LogWindow
+from signal_explorer.bus.timing import SILENT_INTERFACES, TimingSettings
+from signal_explorer.ui.timing_window import TimingWindow
 import can
 import cantools
 
@@ -64,6 +66,9 @@ class MainWindow(QMainWindow):
         self._script_windows = []
         self._dbc_windows = []
         self._transmit_window = None
+        self._timing_window = None
+        self._timing_scan_busy = False
+        self._timing_settings = {}
 
         self._exploring = False
         self._model = SignalTreeModel(history_mode=False)
@@ -97,6 +102,9 @@ class MainWindow(QMainWindow):
         sender_action = QAction('Multi-message sender...', self)
         sender_action.triggered.connect(self._open_transmit_window)
         transmit.addAction(sender_action)
+        timing_menu = self.menuBar().addMenu('Timing')
+        timing_action = timing_menu.addAction('CAN timing and bitrate detection...')
+        timing_action.triggered.connect(self._open_timing_window)
         self._backend = QComboBox()
         for spec in sorted(BACKENDS, key=lambda spec: spec.label.casefold()):
             self._backend.addItem(spec.label, spec.key)
@@ -124,6 +132,8 @@ class MainWindow(QMainWindow):
         self._bitrate.setCurrentIndex(2)  # 500 k
 
         self._fd = QCheckBox("CAN FD")
+        self._listen_only = QCheckBox('Listen-only')
+        self._listen_only.setToolTip('Configure hardware silent mode before going online. All CAN transmission paths are blocked. Disconnect to change mode.')
         self._driver_tx_reports = QCheckBox('Use driver TX reports')
         self._driver_tx_reports.setToolTip('Use driver-reported TX events/timestamps instead of synthetic host echoes. '
                                           'Requires compatible drivers. A report is not proof of intended-ECU receipt. '
@@ -199,6 +209,7 @@ class MainWindow(QMainWindow):
         fd_bar.addWidget(self._data_bitrate)
         fd_bar.addWidget(self._termination)
         fd_bar.addWidget(self._driver_tx_reports)
+        fd_bar.addWidget(self._listen_only)
         fd_bar.addWidget(QLabel("Bitrate above is the arbitration rate. Virtual mode simulates frames, not physical bus timing."))
         fd_bar.addStretch()
         root.addLayout(fd_bar)
@@ -446,6 +457,8 @@ class MainWindow(QMainWindow):
         return self._channel.currentText().split("—")[0].strip()
 
     def _apply_backend(self, spec: BackendSpec) -> None:
+        if self._timing_scan_busy:
+            return
         self._fill_channel(spec)
         self._notes.setText(spec.notes + " " + self._discovery_note)
         self._vector_dll.setVisible(spec.interface == "vector")
@@ -456,6 +469,13 @@ class MainWindow(QMainWindow):
             self._fd.setChecked(False)
         self._sync_fd_controls()
         self._sync_ni_controls()
+
+        settings = self._timing_settings.get(spec.interface)
+        if settings is not None:
+            self._apply_timing_settings(settings)
+        else:
+            for combo, rates in ((self._bitrate, BITRATES), (self._data_bitrate, DATA_BITRATES)):
+                while combo.count() > len(rates): combo.removeItem(combo.count()-1)
 
     def _sync_ni_controls(self, *_):
         ni = self._current_backend().interface == "nixnet"
@@ -468,6 +488,8 @@ class MainWindow(QMainWindow):
         self._termination.setEnabled(ni and available and not self._service.is_connected)
 
     def _toggle_connection(self) -> None:
+        if self._timing_scan_busy:
+            return
         if self._service.is_connected:
             self._service.disconnect_bus()
             return
@@ -493,10 +515,13 @@ class MainWindow(QMainWindow):
             config = dict(configs[0], channels=configs)
         self._service.connect_bus(spec, channel, bitrate, inject, device_config=config,
                                   fd=self._fd.isChecked(), data_bitrate=int(self._data_bitrate.currentData()),
-                                  driver_tx_reports=self._driver_tx_reports.isChecked())
+                                  driver_tx_reports=self._driver_tx_reports.isChecked(),
+                                  listen_only=self._listen_only.isChecked(),
+                                  timing_settings=self._timing_settings.get(spec.interface))
 
     def _on_connected(self, label: str) -> None:
         self._driver_tx_reports.setChecked(self._service.driver_tx_reports)
+        self._listen_only.setChecked(self._service.listen_only)
         self._display_drop_base = 0
         selected = self._channel.currentData()
         option = next((o for o in self._channel_options if o.config == selected), None)
@@ -519,7 +544,7 @@ class MainWindow(QMainWindow):
         self._set_exploring(True)
         self._refresh.setEnabled(False)
         self._vector_dll.setEnabled(False)
-        self._send.setEnabled(True)
+        self._send.setEnabled(self._service.can_send)
         self._connect.setText("Disconnect")
         self._backend.setEnabled(False)
         self._channel.setEnabled(False)
@@ -693,7 +718,11 @@ class MainWindow(QMainWindow):
             self._set_repeat_controls(True)
 
     def _sync_fd_controls(self, *_):
-        connected = self._service.is_connected
+        connected = self._service.is_connected or self._timing_scan_busy
+        silent_supported = self._current_backend().interface in SILENT_INTERFACES
+        if not connected and not silent_supported:
+            self._listen_only.setChecked(False)
+        self._listen_only.setEnabled(not connected and silent_supported)
         panel = getattr(self, "_recording_panel", None)
         running = self._tx_timer.isActive() or (panel is not None and panel.playback_busy)
         supported = self._current_backend().interface in FD_INTERFACES
@@ -702,7 +731,8 @@ class MainWindow(QMainWindow):
             self._driver_tx_reports.setChecked(False)
         self._driver_tx_reports.setEnabled(not connected and reports_supported)
         self._fd.setEnabled(not connected and supported)
-        self._data_bitrate.setEnabled(not connected and supported and self._fd.isChecked())
+        self._data_bitrate.setEnabled(not connected and supported and self._fd.isChecked()
+                                     and self._timing_settings.get(self._current_backend().interface) is None)
         enabled = connected and self._service.fd_enabled
         if not enabled:
             self._tx_fd.setChecked(False)
@@ -719,7 +749,7 @@ class MainWindow(QMainWindow):
             widget.setEnabled(not running)
         self._sync_fd_controls()
         self._send.setText("Stop" if running else "Send")
-        self._send.setEnabled((running or self._service.is_connected) and not self._recording_panel.playback_busy)
+        self._send.setEnabled((running or self._service.can_send) and not self._recording_panel.playback_busy)
 
     def _on_playback_changed(self, running):
         if running:
@@ -744,6 +774,10 @@ class MainWindow(QMainWindow):
         QMessageBox.warning(self, "Signal Explorer", text)
 
     def closeEvent(self, event) -> None:  # noqa: N802
+        if self._timing_window is not None and self._timing_window.busy:
+            self._timing_window.cancel_scan()
+            event.ignore()
+            return
         if self._transmit_window is not None and not self._transmit_window.request_close_for_main():
             event.ignore();return
         for window in list(self._dbc_windows):
@@ -765,4 +799,56 @@ class MainWindow(QMainWindow):
         self._lin.service.disconnect_bus()
         self._ethernet.service.disconnect_bus()
         self._counts_timer.stop()
+        if self._timing_window is not None:
+            self._timing_window.close()
         super().closeEvent(event)
+
+    def _timing_context(self):
+        from signal_explorer.bus.service import _typed_channel
+        spec = self._current_backend()
+        selected = self._channel.currentData()
+        config = selected if isinstance(selected, dict) and self._channel.currentText() == self._channel.itemText(self._channel.currentIndex()) else {}
+        args = dict(spec.extra_kwargs, interface=spec.interface,
+                    channel=_typed_channel(spec.interface, self._channel_value()), ignore_config=True)
+        for key in ('serial', 'channel_index', 'app_name'):
+            if key in config: args[key] = config[key]
+        if spec.interface == 'nixnet': args['can_termination'] = self._termination.isChecked()
+        return dict(interface=spec.interface, label=spec.label, channel=self._channel.currentText(),
+                    bitrate=int(self._bitrate.currentData()), data_bitrate=int(self._data_bitrate.currentData()),
+                    fd=self._fd.isChecked(), connected=self._service.is_connected,
+                    settings=self._timing_settings.get(spec.interface), scan_kwargs=args)
+
+    def _open_timing_window(self):
+        if self._timing_window is None:
+            self._timing_window = TimingWindow(self._timing_context, self._apply_timing_settings, self)
+            self._timing_window.scan_busy.connect(self._timing_scan_changed)
+            self._backend.currentIndexChanged.connect(self._timing_window.refresh_context)
+            self._fd.toggled.connect(self._timing_window.refresh_context)
+            self._service.connected.connect(self._timing_window.sync_controls)
+            self._service.disconnected.connect(self._timing_window.sync_controls)
+        self._timing_window.refresh_context()
+        self._timing_window.show(); self._timing_window.raise_(); self._timing_window.activateWindow()
+        return self._timing_window
+
+    def _apply_timing_settings(self, settings, detected=False):
+        if self._service.is_connected:
+            return
+        self._timing_settings[self._current_backend().interface] = settings
+        for combo, rates, value in ((self._bitrate, BITRATES, settings.bitrate if settings else 500000),
+                                    (self._data_bitrate, DATA_BITRATES, settings.data_bitrate if settings else 2000000)):
+            while combo.count() > len(rates): combo.removeItem(combo.count()-1)
+            if combo.findData(value)<0: combo.addItem(f'{value} bit/s (custom)', value)
+            combo.setCurrentIndex(combo.findData(value))
+        if detected: self._listen_only.setChecked(True)
+        self._bitrate.setEnabled(settings is None and self._current_backend().interface != 'virtual' and not self._timing_scan_busy)
+        self._sync_fd_controls()
+
+    def _timing_scan_changed(self, busy):
+        self._timing_scan_busy = busy
+        for widget in (self._connect,self._backend,self._channel,self._refresh,self._vector_dll,self._demo):
+            widget.setEnabled(not busy)
+        self._channels_button.setEnabled(not busy and bool(self._channel_options))
+        self._bitrate.setEnabled(not busy and self._timing_settings.get(self._current_backend().interface) is None and self._current_backend().interface != 'virtual')
+        self._sync_fd_controls(); self._sync_ni_controls()
+        if busy: self._termination.setEnabled(False)
+        self._demo.setEnabled(not busy and self._current_backend().interface == 'virtual')

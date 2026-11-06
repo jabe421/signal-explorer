@@ -182,7 +182,7 @@ class TransmitWindow(QMainWindow):
         self._title();self._refresh_status();self._show_signals()
 
     def _refresh_status(self):
-        locked=self.playback_busy() or not self.service.is_connected
+        locked=self.playback_busy() or not self.service.can_send
         self._syncing=True
         try:
             for row,uid in enumerate(self._uids):

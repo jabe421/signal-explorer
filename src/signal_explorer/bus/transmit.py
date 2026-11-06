@@ -269,6 +269,7 @@ class TransmitEngine(QObject):
         self.changed.emit()
 
     def _prepare(self, entry):
+        if not self.service.can_send: raise ValueError('CAN transmission unavailable: disconnect listen-only mode before sending.')
         if not self.service.is_connected: raise ValueError('Connect a CAN adapter before sending.')
         if self.playback_busy(): raise ValueError('Stop logfile playback before sending these messages.')
         target = self.service.tx_channel if entry.channel is None else entry.channel

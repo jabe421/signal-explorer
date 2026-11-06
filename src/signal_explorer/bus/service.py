@@ -17,6 +17,8 @@ from signal_explorer.bus.timestamps import HardwareClock, SessionClock
 from signal_explorer.bus.multichannel import native_channel, open_channels
 from signal_explorer.bus.display_queue import DisplayQueue
 from signal_explorer.bus.frames import snapshot_message
+from signal_explorer.bus.listen_only import open_bus
+from signal_explorer.bus.timing import TimingSettings, SILENT_INTERFACES
 
 TX_REPORT_INTERFACES = frozenset({'vector', 'neovi', 'kvaser', 'pcan', 'nixnet'})
 
@@ -65,6 +67,7 @@ class BusService(QObject):
         self._clock = SessionClock()
         self._interface = None
         self.driver_tx_reports = False
+        self.listen_only = False
         self._demo_bus: can.BusABC | None = None
         self._reader: _Reader | None = None
         self._demo_timer = QTimer(self)
@@ -80,6 +83,14 @@ class BusService(QObject):
     def is_connected(self) -> bool:
         return self._bus is not None
 
+    @property
+    def can_send(self):
+        return self.is_connected and not self.listen_only
+
+    @property
+    def can_replay(self):
+        return self.can_send
+
     def connect_bus(
         self,
         backend: BackendSpec,
@@ -90,6 +101,8 @@ class BusService(QObject):
         fd: bool = False,
         data_bitrate: int = 2000000,
         driver_tx_reports: bool = False,
+        listen_only: bool = False,
+        timing_settings: TimingSettings | None = None,
     ) -> None:
         if self._bus is not None:
             self.disconnect_bus()
@@ -123,6 +136,12 @@ class BusService(QObject):
             kwargs.setdefault("tty_baudrate", 115200)
 
         try:
+            if listen_only and backend.interface not in SILENT_INTERFACES:
+                raise ValueError('Listen-only is unavailable for this backend; no active-mode fallback is allowed.')
+            request = timing_settings or TimingSettings(bitrate=bitrate, data_bitrate=data_bitrate)
+            if request.bitrate != bitrate or (fd and request.data_bitrate != data_bitrate):
+                raise ValueError('Timing rates must match the connection rates.')
+            custom_timing = request.build(backend.interface, fd)
             primary_channel = native_channel(backend.interface, kwargs['channel'])
             for cfg in configs:
                 if cfg.get('can_termination') and cfg.get('can_term_available') is False:
@@ -136,10 +155,13 @@ class BusService(QObject):
                 if device_config and device_config.get("supports_fd") is False:
                     raise ValueError("The selected channel does not support CAN FD.")
                 kwargs.update(fd_configuration(backend.interface, bitrate, data_bitrate))
+            if custom_timing is not None:
+                kwargs['timing'] = custom_timing
             if backend.interface in {'vector', 'neovi'}:
                 self._device_lease = DeviceLease(backend.interface, kwargs.get('serial'), 'CAN')
-            self._bus = (open_channels(can.Bus, backend.interface, configs, kwargs)
-                         if len(configs) > 1 else can.Bus(**kwargs))
+            factory = lambda **args: open_bus(monitor_only=listen_only, **args)
+            self._bus = (open_channels(factory, backend.interface, configs, kwargs)
+                         if len(configs) > 1 else factory(**kwargs))
         except Exception as exc:  # noqa: BLE001 — surface any vendor/driver failure in the UI
             self._bus = None
             if self._device_lease:
@@ -157,6 +179,7 @@ class BusService(QObject):
         self._clock = SessionClock()
         self._interface = backend.interface
         self.driver_tx_reports = driver_tx_reports
+        self.listen_only = listen_only
         self._rx_clock = HardwareClock(self._clock.now) if backend.interface == 'neovi' else None
         self._channel = primary_channel
         self.channels = [dict(native_channel=native_channel(backend.interface, cfg['channel']),
@@ -171,6 +194,8 @@ class BusService(QObject):
                                  data_bitrate=data_bitrate if fd else None,
                                  serial=(device_config or {}).get("serial"))
         self.session_info['channels'] = self.channels
+        self.session_info.update(listen_only=listen_only, timing_request=vars(request),
+                                 calculated_timing=str(custom_timing) if custom_timing is not None else 'Driver/default timing')
         self.session_info.update(
             driver_tx_reports=driver_tx_reports,
             host_clock='Unix epoch anchored once to monotonic time for this connection',
@@ -204,6 +229,7 @@ class BusService(QObject):
                 self.error.emit(f"Demo injector failed: {exc}")
 
         self.connected.emit(f"{backend.label} · " + ', '.join(c['label'] for c in self.channels)
+                            + (' · LISTEN-ONLY (TX blocked)' if listen_only else ' · Normal')
                             + (' · TX: driver reports' if driver_tx_reports else ' · TX: local estimates'))
         self._display_timer.start()
 
@@ -265,6 +291,8 @@ class BusService(QObject):
             try:
                 if self._bus is None:
                     raise RuntimeError("Connect before sending a message.")
+                if self.listen_only:
+                    raise RuntimeError('Listen-only connection: transmission is disabled, including scripts and replay.')
                 validate_frame(msg, self.fd_enabled)
                 target = self.tx_channel if msg.channel is None else msg.channel
                 selected = next((c for c in self.channels if str(target) in (str(c['native_channel']), c['label'])), None)

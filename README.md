@@ -1,5 +1,11 @@
 # Signal Explorer
 
+**Listen-only and advanced timing:** select Listen-only before a supported CAN
+connection. Open **Timing > CAN timing and bitrate detection...** for custom
+rates, sample point/SJW and passive Classic CAN detection in a separate window.
+See [CAN timing](docs/can-timing.md) for backend support and limits, and
+**Action Items.xlsx** for pending manual tests and deferred features.
+
 **Windows installer builds:** use the manually triggered **Build Windows
 installer** GitHub Actions workflow. See [the first-build walkthrough](docs/windows-build.md)
 for committing the workflow, starting a build, downloading the installer and

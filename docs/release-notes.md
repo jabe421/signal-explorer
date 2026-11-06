@@ -1,5 +1,20 @@
 # Source build release notes
 
+## November 6, 2026: listen-only and CAN Timing window
+
+Add a connection-level Listen-only option for Vector/PCAN/Kvaser/NI and the
+virtual send restriction. Check backend setup/capabilities and prevent all
+application CAN TX in this mode. Unsupported silent backends fail without an
+active fallback. Normal adapter support remains.
+
+Add **Timing > CAN timing and bitrate detection...** with custom rates,
+backend-specific sample point/SJW preview, and cancellable passive Classic CAN
+candidate scanning. Profiles last for the current session. Detection applies a
+unique candidate only, retaining listen-only for the next connection. Hardware
+qualification, Intrepid/CANable silent integration and FD detection remain open.
+See [can-timing.md](can-timing.md) and the root **Action Items.xlsx** tracker.
+All 253 automated tests pass; physical silent behavior has not been qualified.
+
 ## November 5, 2026: CAN timestamp provenance and driver TX reports
 
 Add opt-in **Use driver TX reports** for Vector, Intrepid, Kvaser, PEAK PCAN and
