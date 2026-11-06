@@ -19,6 +19,26 @@ from signal_explorer.bus.display_queue import DisplayQueue
 from signal_explorer.bus.frames import snapshot_message
 from signal_explorer.bus.listen_only import open_bus
 from signal_explorer.bus.timing import TimingSettings, SILENT_INTERFACES
+from signal_explorer.bus.tx_dispatch import TxDispatcher, TxFailure, send_failure
+
+_DRIVER_TASKS = set()  # Keep outstanding native calls alive until Qt receives completion.
+
+
+class _DriverTask(QThread):
+    def __init__(self, owner, operation):
+        super().__init__()
+        self.owner, self.operation = owner, operation
+        self.result = self.problem = None
+        _DRIVER_TASKS.add(self)
+
+    def run(self):
+        try: self.result = self.operation()
+        except Exception as exc: self.problem = exc
+
+    def release(self):
+        self.owner = self.operation = None
+        _DRIVER_TASKS.discard(self)
+        self.deleteLater()
 
 TX_REPORT_INTERFACES = frozenset({'vector', 'neovi', 'kvaser', 'pcan', 'nixnet'})
 
@@ -52,12 +72,17 @@ class BusService(QObject):
     error = Signal(str)
     traffic = Signal(object)  # Thread-safe capture before display queuing/filtering.
     about_to_disconnect = Signal()
+    connection_state_changed = Signal(str)
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._bus: can.BusABC | None = None
         self._device_lease = None
         self._send_lock = RLock()
+        self._native_gates = {}
+        self._dispatcher = None
+        self._connection_task = None
+        self._closing = self._cancel_connect = False
         self.session_info = {}
         self._channel = None
         self.channels = []
@@ -85,7 +110,11 @@ class BusService(QObject):
 
     @property
     def can_send(self):
-        return self.is_connected and not self.listen_only
+        return self.is_connected and not self.listen_only and not self.busy
+
+    @property
+    def busy(self):
+        return self._connection_task is not None or self._closing
 
     @property
     def can_replay(self):
@@ -104,9 +133,70 @@ class BusService(QObject):
         listen_only: bool = False,
         timing_settings: TimingSettings | None = None,
     ) -> None:
+        if self.busy:
+            raise RuntimeError('Wait for the current CAN connection operation to finish.')
         if self._bus is not None:
             self.disconnect_bus()
 
+        try:
+            result = self._open_connection(backend, channel, bitrate, inject_demo, device_config,
+                                          fd, data_bitrate, driver_tx_reports, listen_only, timing_settings)
+        except Exception as exc:
+            self.error.emit(str(exc))
+            return
+        self._adopt_connection(result)
+
+    def connect_async(self, *args, **kwargs):
+        if self.busy or self.is_connected:
+            return
+        self._cancel_connect = False
+        self._connection_task = _DriverTask(self, lambda: self._open_connection(*args, **kwargs))
+        self._connection_task.finished.connect(self._finish_connect)
+        self.connection_state_changed.emit('connecting')
+        self._connection_task.start()
+
+    def cancel_connect(self):
+        self._cancel_connect = True
+        self.connection_state_changed.emit('cancelling')
+
+    def _finish_connect(self):
+        task, self._connection_task = self._connection_task, None
+        result, problem = task.result, task.problem
+        task.release()
+        if result is not None and self._cancel_connect:
+            # Opening a native device cannot always be interrupted. Close a
+            # late result in a worker before permitting any new connection.
+            self._closing = True
+            self._connection_task = _DriverTask(self, lambda: self._dispose_open_result(result))
+            self._connection_task.finished.connect(self._finish_cancelled_open)
+            self._connection_task.start()
+            return
+        if result is not None:
+            self._adopt_connection(result)
+            self.connection_state_changed.emit('connected')
+        else:
+            self.connection_state_changed.emit('disconnected')
+            if not self._cancel_connect: self.error.emit(str(problem))
+
+    @staticmethod
+    def _dispose_open_result(result):
+        try: result['bus'].shutdown()
+        finally:
+            if result['lease']: result['lease'].release()
+
+    def _finish_cancelled_open(self):
+        task, self._connection_task = self._connection_task, None
+        problem = task.problem
+        task.release()
+        self._closing = False
+        self.connection_state_changed.emit('disconnected')
+        if problem: self.error.emit(f'CAN cleanup failed: {problem}')
+
+    @staticmethod
+    def _open_connection(backend, channel, bitrate, inject_demo, device_config=None,
+                         fd=False, data_bitrate=2000000, driver_tx_reports=False,
+                         listen_only=False, timing_settings=None):
+        bus = lease = None
         kwargs: dict[str, Any] = {
             "interface": backend.interface,
             "channel": _typed_channel(backend.interface, channel),
@@ -118,8 +208,7 @@ class BusService(QObject):
                 if key in device_config:
                     kwargs[key] = device_config[key]
         if driver_tx_reports and backend.interface not in TX_REPORT_INTERFACES:
-            self.error.emit('Driver TX reports are not supported by this backend. Disable that option.')
-            return
+            raise ValueError('Driver TX reports are not supported by this backend. Disable that option.')
         kwargs["receive_own_messages"] = driver_tx_reports
         if driver_tx_reports and backend.interface == 'kvaser':
             kwargs['single_handle'] = False
@@ -158,22 +247,34 @@ class BusService(QObject):
             if custom_timing is not None:
                 kwargs['timing'] = custom_timing
             if backend.interface in {'vector', 'neovi'}:
-                self._device_lease = DeviceLease(backend.interface, kwargs.get('serial'), 'CAN')
+                lease = DeviceLease(backend.interface, kwargs.get('serial'), 'CAN')
             factory = lambda **args: open_bus(monitor_only=listen_only, **args)
-            self._bus = (open_channels(factory, backend.interface, configs, kwargs)
+            bus = (open_channels(factory, backend.interface, configs, kwargs)
                          if len(configs) > 1 else factory(**kwargs))
         except Exception as exc:  # noqa: BLE001 — surface any vendor/driver failure in the UI
-            self._bus = None
-            if self._device_lease:
-                self._device_lease.release()
-                self._device_lease = None
+            bus = None
+            if lease:
+                lease.release()
+                lease = None
             hint = (' Driver TX reports require compatible drivers. Disable that option to use local TX estimates.'
                     if driver_tx_reports else '') + (' Check the nixnet Python extra, the 64-bit NI-XNET driver, '
                     'and the exact CAN interface name in NI MAX; close other bus sessions.'
                     if backend.interface == 'nixnet' else '')
-            self.error.emit(f"Connect failed ({backend.label}): {exc}{hint}")
-            return
+            raise RuntimeError(f"Connect failed ({backend.label}): {exc}{hint}") from exc
 
+        return dict(backend=backend, channel=channel, bitrate=bitrate, inject_demo=inject_demo,
+                    device_config=device_config, fd=fd, data_bitrate=data_bitrate,
+                    driver_tx_reports=driver_tx_reports, listen_only=listen_only,
+                    kwargs=kwargs, configs=configs, request=request, custom_timing=custom_timing,
+                    primary_channel=primary_channel, bus=bus, lease=lease)
+
+    def _adopt_connection(self, result):
+        backend, channel, bitrate, inject_demo, device_config, fd, data_bitrate, driver_tx_reports, listen_only = (
+            result[key] for key in ('backend','channel','bitrate','inject_demo','device_config',
+                                    'fd','data_bitrate','driver_tx_reports','listen_only'))
+        kwargs, configs, request, custom_timing, primary_channel = (
+            result[key] for key in ('kwargs','configs','request','custom_timing','primary_channel'))
+        self._bus, self._device_lease = result['bus'], result['lease']
         self.fd_enabled = fd
         self._display.reset()
         self._clock = SessionClock()
@@ -189,6 +290,9 @@ class BusService(QObject):
                                            and cfg['channel_label'][3:].isdigit() else index + 1))
                          for index, cfg in enumerate(configs)]
         self.tx_channel = self._channel
+        keys = list(self._bus.buses) if hasattr(self._bus, 'buses') else ['shared']
+        self._native_gates = {str(key): RLock() for key in keys}
+        self._dispatcher = TxDispatcher(keys)
         self.session_info = dict(adapter=backend.label, interface=backend.interface,
                                  native_channel=str(self._channel), bitrate=bitrate, fd=fd,
                                  data_bitrate=data_bitrate if fd else None,
@@ -286,11 +390,32 @@ class BusService(QObject):
         self._display.put(captured, epoch)
         return captured
 
-    def send_message(self, msg: can.Message, report_errors=True, *, return_timestamp=False) -> bool | float:
+    def submit_operation(self, channel, operation):
         with self._send_lock:
-            try:
-                if self._bus is None:
-                    raise RuntimeError("Connect before sending a message.")
+            if not self.can_send or self._dispatcher is None:
+                from concurrent.futures import Future
+                future = Future(); future.set_exception(TxFailure('CAN transmission unavailable or session is closing.'))
+                return future
+            key = str(channel) if hasattr(self._bus, 'buses') else 'shared'
+            return self._dispatcher.submit(key, operation)
+
+    def submit_message(self, msg):
+        outgoing = snapshot_message(msg)
+        if outgoing.channel is None:
+            outgoing.channel = self.tx_channel
+        def operation():
+            result = self.send_message(outgoing, report_errors=False, return_timestamp=True, raise_on_error=True)
+            if result is False: raise TxFailure('Adapter rejected TX.')
+            return result
+        return self.submit_operation(outgoing.channel, operation)
+
+    def send_message(self, msg: can.Message, report_errors=True, *, return_timestamp=False,
+                     raise_on_error=False) -> bool | float:
+        """Synchronous background API. UI callers must use submit_message()."""
+        try:
+            with self._send_lock:
+                if self._bus is None or self.busy:
+                    raise RuntimeError('Connect before sending; the CAN session may be closing.')
                 if self.listen_only:
                     raise RuntimeError('Listen-only connection: transmission is disabled, including scripts and replay.')
                 validate_frame(msg, self.fd_enabled)
@@ -300,68 +425,98 @@ class BusService(QObject):
                     raise ValueError('TX channel is not enabled. Select one enabled CAN channel.')
                 outgoing = snapshot_message(msg)
                 outgoing.channel = selected['native_channel']
-                self._bus.send(outgoing, timeout=0.2)
-            except Exception as exc:
-                if report_errors:
-                    self.error.emit(f"Send failed: {exc}")
-                return False
-            accepted_at = self._clock.now()
-            if self.driver_tx_reports:
-                # recv() publishes the driver's later timestamp exactly once.
-                # Never synthesize a confirmation when that report is absent.
-                return accepted_at if return_timestamp else True
-            echo = copy(outgoing)
-            echo.timestamp = accepted_at
-            echo.timestamp_source = 'monotonic host TX acceptance estimate'
-            echo.raw_timestamp = None
-            echo.tx_confirmation = 'local acceptance only'
-            echo.is_rx = False
-            echo.channel = outgoing.channel
-            epoch = self._display.epoch
-            self.traffic.emit(echo)
-            self._display.put(echo, epoch, legacy=False)
-        self.message.emit(echo)
-        return echo.timestamp if return_timestamp else True
+                bus = self._bus
+                key = str(outgoing.channel) if hasattr(bus, 'buses') else 'shared'
+                gate = self._native_gates[key]
+            # Only callers using this native handle serialize. Never hold the
+            # connection-state lock while a vendor function can block.
+            with gate:
+                if self._closing or self._bus is not bus:
+                    raise RuntimeError('CAN session closed before transmission.')
+                bus.send(outgoing, timeout=0.0)
+                accepted_at = self._clock.now()
+                if self.driver_tx_reports:
+                    return accepted_at if return_timestamp else True
+                echo = copy(outgoing)
+                echo.timestamp = accepted_at
+                echo.timestamp_source = 'monotonic host TX acceptance estimate'
+                echo.raw_timestamp = None
+                echo.tx_confirmation = 'local acceptance only'
+                echo.is_rx = False
+                epoch = self._display.epoch
+                self.traffic.emit(echo)
+                self._display.put(echo, epoch, legacy=False)
+                self.message.emit(echo)
+                return echo.timestamp if return_timestamp else True
+        except Exception as exc:
+            failure = send_failure(exc, self._interface)
+            if raise_on_error: raise failure from exc
+            if report_errors: self.error.emit(f'Send failed: {failure}')
+            return False
 
-    def disconnect_bus(self) -> None:
-        if self._bus is not None:
-            self.about_to_disconnect.emit()
-        self.fd_enabled = False
+    def _begin_disconnect(self):
+        with self._send_lock:
+            self._closing = True
+        self.about_to_disconnect.emit()
         self._demo_timer.stop()
-        if self._demo_bus is not None:
-            try:
-                self._demo_bus.shutdown()
-            except Exception:
-                pass
-            self._demo_bus = None
-
-        if self._reader is not None:
-            self._reader.requestInterruption()
-            self._reader.wait(1000)
-            self._reader = None
         self._display_timer.stop()
+        if self._dispatcher: self._dispatcher.stop()
+        if self._reader: self._reader.requestInterruption()
+
+    def _shutdown_connection(self):
+        from contextlib import ExitStack
+        if self._dispatcher: self._dispatcher.join()
+        if self._reader: self._reader.wait()
+        with ExitStack() as stack:
+            for gate in self._native_gates.values(): stack.enter_context(gate)
+            try:
+                if self._demo_bus: self._demo_bus.shutdown()
+                if self._bus: self._bus.shutdown()
+            finally:
+                if self._device_lease: self._device_lease.release()
+
+    def _clear_connection(self):
         self._flush_display(self._display.capacity)
+        self._bus = self._demo_bus = self._reader = self._dispatcher = self._device_lease = None
         self._rx_clock = None
+        self._native_gates = {}
         self.channels = []
         self.tx_channel = None
-
-        with self._send_lock:
-            if self._bus is not None:
-                try:
-                    self._bus.shutdown()
-                except Exception:
-                    pass
-                self._bus = None
-
-        if self._device_lease:
-            self._device_lease.release()
-            self._device_lease = None
-
+        self.fd_enabled = self._closing = False
         self.disconnected.emit()
+        self.connection_state_changed.emit('disconnected')
+
+    def disconnect_bus(self) -> None:
+        """Synchronous cleanup for background/headless callers and tests."""
+        if self._connection_task is not None:
+            self.cancel_connect()
+            return
+        if self._bus is not None:
+            self._begin_disconnect()
+            try: self._shutdown_connection()
+            except Exception as exc: self.error.emit(f'CAN cleanup failed: {exc}')
+        self._clear_connection()
+
+    def disconnect_async(self):
+        if self._connection_task is not None:
+            self.cancel_connect(); return
+        if self._closing or self._bus is None: return
+        self._begin_disconnect()
+        self._connection_task = _DriverTask(self, self._shutdown_connection)
+        self._connection_task.finished.connect(self._finish_disconnect)
+        self.connection_state_changed.emit('disconnecting')
+        self._connection_task.start()
+
+    def _finish_disconnect(self):
+        task, self._connection_task = self._connection_task, None
+        problem = task.problem
+        task.release()
+        self._clear_connection()
+        if problem: self.error.emit(f'CAN cleanup failed: {problem}')
 
     def _on_reader_failed(self, text: str) -> None:
         self.error.emit(text)
-        self.disconnect_bus()
+        self.disconnect_async()
 
     def _send_demo_frame(self) -> None:
         if self._demo_bus is None:

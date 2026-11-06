@@ -194,7 +194,9 @@ class TransmitWindow(QMainWindow):
                     if self.table.item(row,column).text()!=text:self.table.item(row,column).setText(text)
                 self.table.item(row,19).setText(str(count))
                 self.table.item(row,20).setText(error or ('Cyclic' if running else 'Sending / stopping' if pending else 'Ready' if not locked else 'Disconnected / replay active'))
-                self.table.item(row,20).setToolTip(error)
+                diagnostics=self.engine.diagnostics(uid)
+                self.table.item(row,20).setToolTip((error+'\n' if error else '')+
+                    f"Retries: {diagnostics['retries']} | Missed cycles: {diagnostics['missed_cycles']}")
                 button=self.table.cellWidget(row,8)
                 button.setText('Stop' if running else 'Start' if entry.cyclic else 'now')
                 button.setEnabled(running or (not locked and not pending and entry.enabled))

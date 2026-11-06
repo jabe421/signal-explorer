@@ -1,6 +1,6 @@
 # Multi-message CAN / CAN FD sender
 
-Updated November 2, 2026.
+Updated November 6, 2026.
 
 Open **Transmit > Multi-message sender...** or **Multi-message TX...** beside
 the existing main-window Send button. The independent **Send Messages** window
@@ -107,12 +107,18 @@ not stop sends or exclude TX from logging. Python scripts and the main sender
 remain independent.
 
 The scheduler runs off the GUI thread. PC timing is best effort: bus arbitration,
-adapter/API latency, the shared send lock and other rows can delay transmission.
+adapter/API latency and other rows sharing a native handle can delay transmission.
 Missed cycles are skipped rather than sent as a catch-up burst. Pulse/sine
 waveforms are sampled at the row's transmit rate. There are no electrical error
 frame generators, keyboard-trigger bindings or hardware-timed scheduling in
 this first transmit-list implementation. RAW and DBC data frames are supported;
 RTR/error-frame generation is not exposed here.
+
+The scheduler submits bounded background jobs to one serial lane per native
+handle. Independent handles progress separately; a cyclic row has at most one
+pending job. Explicit queue-full rejections receive up to three retries with
+20/40/80-ms backoff. Unknown errors/timeouts stop the row without retry to avoid
+duplicates. See [transmit-robustness.md](transmit-robustness.md) for limits.
 
 ## File format and portability
 

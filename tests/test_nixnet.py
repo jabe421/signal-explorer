@@ -123,7 +123,7 @@ def test_ui_channel_and_termination_forwarding():
         assert window._channel_value() == 'CAN7'
         assert window._fd.isEnabled() and not window._termination.isChecked()
         window._termination.setChecked(True)
-        with patch.object(window._service, 'connect_bus') as connect:
+        with patch.object(window._service, 'connect_async') as connect:
             window._toggle_connection()
         assert connect.call_args.kwargs['device_config']['can_termination']
         window._channel.setCurrentIndex(1)

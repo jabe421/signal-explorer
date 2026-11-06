@@ -59,6 +59,7 @@ class PeriodicSend(unittest.TestCase):
         self.assertEqual(self.window._send.text(), "Send")
         self.window._tx_interval.clear()
         self.window._send.click()
+        process_for(30)
         self.assertEqual(len(self.drain()), 1)
         self.assertFalse(self.window._tx_timer.isActive())
 
@@ -74,6 +75,7 @@ class PeriodicSend(unittest.TestCase):
     def test_disconnect_and_close_stop_repeat(self):
         self.window._tx_interval.setText("100")
         self.window._send_message()
+        process_for(30)
         self.drain()
         self.window._service.disconnect_bus()
         self.assertEqual(self.window._send.text(), "Send")
@@ -89,12 +91,15 @@ class PeriodicSend(unittest.TestCase):
 
     def test_failed_first_send_and_failed_repeat_stop(self):
         self.window._tx_interval.setText("100")
-        with patch.object(self.window._service, "send_message", return_value=False):
+        with patch.object(self.window._service, "send_message", return_value=False), patch('signal_explorer.ui.main_window.QMessageBox.warning'):
             self.window._send_message()
+            process_for(30)
         self.assertFalse(self.window._tx_timer.isActive())
         self.window._send_message()
-        with patch.object(self.window._service, "send_message", return_value=False):
+        process_for(30)
+        with patch.object(self.window._service, "send_message", return_value=False), patch('signal_explorer.ui.main_window.QMessageBox.warning'):
             self.window._send_repeated_message()
+            process_for(30)
         self.assertFalse(self.window._tx_timer.isActive())
         self.assertEqual(self.window._send.text(), "Send")
 

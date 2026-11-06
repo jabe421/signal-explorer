@@ -1,5 +1,16 @@
 # Source build release notes
 
+## November 6, 2026: CAN transmit robustness
+
+Move GUI connection setup/cleanup, main sends and script send waits off the UI
+thread. Add Connecting/Cancel/Disconnecting states and close late cancelled open
+results before allowing reuse. Schedule cyclic rows independently of driver work
+with bounded per-handle queues, one pending job per row and no catch-up bursts.
+Request zero native send timeout; serialize shared handles and allow independent
+handles to progress separately. Retry only known pre-acceptance rejection up to
+three times with bounded backoff; uncertain timeouts are not retried.
+See [transmit-robustness.md](transmit-robustness.md) for behavior and hardware limits.
+
 ## November 6, 2026: listen-only and CAN Timing window
 
 Add a connection-level Listen-only option for Vector/PCAN/Kvaser/NI and the

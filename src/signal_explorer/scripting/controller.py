@@ -30,6 +30,7 @@ class ScriptController(QObject):
         self._receive_waiting = self._wake_queued = self._drop_warning = False
         self._receive_match = None
         self._pending = None; self._deferred = deque()
+        self._send_pending = None
         self._buffer = b''; self._result = None; self._failure = None
         self._pause_at = None; self._want_pause = False
         self._timer = QTimer(self); self._timer.setInterval(20); self._timer.timeout.connect(self._tick)
@@ -49,6 +50,7 @@ class ScriptController(QObject):
         if self.active: raise RuntimeError('Another script is running. Stop it before starting a new script.')
         if not self.transport.is_connected: raise RuntimeError('Connect the '+self.transport.protocol+' session before running a script.')
         self.owner = owner; self.outcome = None; self.line = 0
+        self._send_pending = None
         self._pending = None; self._deferred.clear(); self._buffer = b''
         self._result = self._failure = None
         self._want_pause = False; self._pause_at = None
@@ -110,6 +112,9 @@ class ScriptController(QObject):
 
     def stop(self, reason='Stopped by user.'):
         if not self.active or self.state == 'stopping': return
+        if self._send_pending is not None:
+            self._send_pending[0].cancel()
+            self._send_pending = None
         self.output.emit(reason+'\n')
         with self._lock:
             self._accepting = self._receive_waiting = False
@@ -146,6 +151,13 @@ class ScriptController(QObject):
         self._tick()
 
     def _tick(self):
+        if self._send_pending is not None:
+            future, identifier, process = self._send_pending
+            if future.done():
+                self._send_pending = None
+                if process is self.process and self.state != 'stopping':
+                    try: self._reply(identifier, future.result())
+                    except Exception as exc: self._reply(identifier, error=exc)
         if not self.active or self.state == 'stopping': return
         if not self.transport.is_connected:
             self._disconnected(); return
@@ -188,7 +200,11 @@ class ScriptController(QObject):
             if not self.transport.is_connected: raise RuntimeError(self.transport.protocol+' session is disconnected.')
             method, parameters = event['method'], event['parameters']
             if method == 'send':
-                self._reply(event['id'], self.transport.send(parameters))
+                if hasattr(self.transport, 'send_async'):
+                    if self._send_pending is not None: raise RuntimeError('A CAN send is already pending.')
+                    self._send_pending = (self.transport.send_async(parameters), event['id'], self.process)
+                else:
+                    self._reply(event['id'], self.transport.send(parameters))
             elif method == 'stats':
                 self._reply(event['id'], self._events.stats())
             elif method == 'flush':
@@ -254,6 +270,9 @@ class ScriptController(QObject):
 
     def _ended(self, process, code, status):
         if process is not self.process: return
+        if self._send_pending is not None:
+            self._send_pending[0].cancel()
+            self._send_pending = None
         # Drain final output before deciding the verdict (including large bursts).
         self._read(process)
         while b'\n' in self._buffer: self._read(process)

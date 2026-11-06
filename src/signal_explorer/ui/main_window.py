@@ -61,6 +61,12 @@ class MainWindow(QMainWindow):
         self._service.disconnected.connect(self._on_disconnected)
         self._service.messages.connect(self._on_messages)
         self._service.error.connect(self._on_error)
+        self._service.connection_state_changed.connect(self._on_connection_state)
+        self._close_after_disconnect = False
+        self._main_tx_future = None
+        self._main_tx_poll = QTimer(self)
+        self._main_tx_poll.setInterval(10)
+        self._main_tx_poll.timeout.connect(self._poll_main_tx)
         self._script_transport = CanScriptTransport(self._service, self)
         self._script_controller = ScriptController(self._script_transport, self)
         self._script_windows = []
@@ -490,8 +496,11 @@ class MainWindow(QMainWindow):
     def _toggle_connection(self) -> None:
         if self._timing_scan_busy:
             return
+        if self._service.busy:
+            self._service.cancel_connect()
+            return
         if self._service.is_connected:
-            self._service.disconnect_bus()
+            self._service.disconnect_async()
             return
         spec = self._current_backend()
         if self._saved_channels_unavailable:
@@ -513,7 +522,7 @@ class MainWindow(QMainWindow):
                 for c in configs:
                     c['can_termination'] = self._termination.isChecked()
             config = dict(configs[0], channels=configs)
-        self._service.connect_bus(spec, channel, bitrate, inject, device_config=config,
+        self._service.connect_async(spec, channel, bitrate, inject, device_config=config,
                                   fd=self._fd.isChecked(), data_bitrate=int(self._data_bitrate.currentData()),
                                   driver_tx_reports=self._driver_tx_reports.isChecked(),
                                   listen_only=self._listen_only.isChecked(),
@@ -553,6 +562,22 @@ class MainWindow(QMainWindow):
         self._sync_fd_controls()
         self._status.setText(f"Connected · {label}")
 
+    def _on_connection_state(self, state):
+        if state in ('connecting', 'cancelling', 'disconnecting'):
+            for widget in (self._backend,self._channel,self._channels_button,self._bitrate,self._fd,
+                           self._data_bitrate,self._listen_only,self._driver_tx_reports,self._termination,
+                           self._refresh,self._vector_dll,self._demo,self._send):
+                widget.setEnabled(False)
+            self._connect.setText('Connecting… (Cancel)' if state=='connecting' else 'Waiting for driver…')
+            self._connect.setEnabled(state=='connecting')
+            self._status.setText({'connecting':'Connecting…','cancelling':'Cancelling connection; waiting for driver cleanup…',
+                                  'disconnecting':'Disconnecting; waiting for outstanding driver calls…'}[state])
+        else:
+            self._connect.setEnabled(True)
+            if state == 'disconnected' and not self._service.is_connected and self._connect.text() != 'Connect':
+                self._on_disconnected()
+        if self._timing_window is not None: self._timing_window.sync_controls()
+
     def _on_disconnected(self) -> None:
         self._tx_channel.setEnabled(False)
         self._set_exploring(False)
@@ -566,6 +591,7 @@ class MainWindow(QMainWindow):
         self._channel.setEnabled(True)
         self._apply_backend(self._current_backend())
         self._status.setText("Disconnected")
+        if self._close_after_disconnect: QTimer.singleShot(0, self.close)
 
     def _on_message(self, msg) -> None:
         # Compatibility for explicit single-frame UI callers; service delivery
@@ -710,7 +736,7 @@ class MainWindow(QMainWindow):
         except ValueError as exc:
             QMessageBox.warning(self, "Invalid CAN message", str(exc))
             return
-        if not self._service.send_message(msg):
+        if not self._queue_main_tx(msg):
             return
         if interval is not None and self._service.is_connected:
             self._repeat_message = msg
@@ -718,7 +744,7 @@ class MainWindow(QMainWindow):
             self._set_repeat_controls(True)
 
     def _sync_fd_controls(self, *_):
-        connected = self._service.is_connected or self._timing_scan_busy
+        connected = self._service.is_connected or self._service.busy or self._timing_scan_busy
         silent_supported = self._current_backend().interface in SILENT_INTERFACES
         if not connected and not silent_supported:
             self._listen_only.setChecked(False)
@@ -749,7 +775,8 @@ class MainWindow(QMainWindow):
             widget.setEnabled(not running)
         self._sync_fd_controls()
         self._send.setText("Stop" if running else "Send")
-        self._send.setEnabled((running or self._service.can_send) and not self._recording_panel.playback_busy)
+        self._send.setEnabled((running or (self._service.can_send and self._main_tx_future is None))
+                              and not self._recording_panel.playback_busy)
 
     def _on_playback_changed(self, running):
         if running:
@@ -760,11 +787,30 @@ class MainWindow(QMainWindow):
         if self._repeat_message is None or not self._service.is_connected:
             self._stop_repeated_send()
             return
-        if not self._service.send_message(self._repeat_message):
+        if not self._queue_main_tx(self._repeat_message):
             self._stop_repeated_send()
+
+    def _queue_main_tx(self, msg):
+        if self._main_tx_future is not None:
+            return True  # Coalesce missed periodic ticks; never build a backlog.
+        self._main_tx_future = self._service.submit_message(msg)
+        self._main_tx_poll.start()
+        if not self._tx_timer.isActive(): self._send.setEnabled(False)
+        return True
+
+    def _poll_main_tx(self):
+        future = self._main_tx_future
+        if future is None or not future.done(): return
+        self._main_tx_future = None
+        self._main_tx_poll.stop()
+        self._set_repeat_controls(self._tx_timer.isActive())
+        if not future.cancelled():
+            try: future.result()
+            except Exception as exc: self._on_error(f'Send failed: {exc}')
 
     def _stop_repeated_send(self):
         self._tx_timer.stop()
+        if self._main_tx_future is not None: self._main_tx_future.cancel()
         self._repeat_message = None
         self._set_repeat_controls(False)
 
@@ -774,6 +820,12 @@ class MainWindow(QMainWindow):
         QMessageBox.warning(self, "Signal Explorer", text)
 
     def closeEvent(self, event) -> None:  # noqa: N802
+        if self._service.busy:
+            self._close_after_disconnect = True
+            self._service.cancel_connect()
+            event.ignore()
+            return
+        self._close_after_disconnect = False
         if self._timing_window is not None and self._timing_window.busy:
             self._timing_window.cancel_scan()
             event.ignore()
@@ -795,7 +847,14 @@ class MainWindow(QMainWindow):
             return
         if self._transmit_window is not None:
             self._transmit_window.shutdown()
+        if self._service.is_connected and self._service._interface != 'virtual':
+            self._close_after_disconnect = True
+            self._service.disconnect_async()
+            event.ignore()
+            return
         self._service.disconnect_bus()
+        self._main_tx_poll.stop()
+        self._main_tx_future = None
         self._lin.service.disconnect_bus()
         self._ethernet.service.disconnect_bus()
         self._counts_timer.stop()
@@ -815,7 +874,7 @@ class MainWindow(QMainWindow):
         if spec.interface == 'nixnet': args['can_termination'] = self._termination.isChecked()
         return dict(interface=spec.interface, label=spec.label, channel=self._channel.currentText(),
                     bitrate=int(self._bitrate.currentData()), data_bitrate=int(self._data_bitrate.currentData()),
-                    fd=self._fd.isChecked(), connected=self._service.is_connected,
+                    fd=self._fd.isChecked(), connected=self._service.is_connected or self._service.busy,
                     settings=self._timing_settings.get(spec.interface), scan_kwargs=args)
 
     def _open_timing_window(self):

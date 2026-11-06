@@ -70,13 +70,20 @@ class CanScriptTransport(ScriptTransport):
                     raw_timestamp=getattr(message, 'raw_timestamp', None),
                     tx_confirmation=getattr(message, 'tx_confirmation', 'none'))
 
-    def send(self, parameters):
+    def _message(self, parameters):
         message = can.Message(arbitration_id=parameters['arbitration_id'],
                               channel=parameters.get('channel'),
                               data=bytes.fromhex(parameters['data']),
                               is_extended_id=parameters.get('extended', False),
                               is_fd=parameters.get('fd', False),
                               bitrate_switch=parameters.get('brs', False), check=True)
+        return message
+
+    def send_async(self, parameters):
+        return self.service.submit_message(self._message(parameters))
+
+    def send(self, parameters):
+        message = self._message(parameters)
         # Keep the service's FD validation and its single RX/TX/logging path.
         timestamp = self.service.send_message(message, report_errors=False, return_timestamp=True)
         if timestamp is False:

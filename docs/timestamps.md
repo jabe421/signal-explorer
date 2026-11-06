@@ -21,7 +21,8 @@ Driver reports have backend-specific meaning:
 
 - Vector: python-can exposes Classic TX_COMPLETED and FD TX_OK events as TX.
 - Intrepid: python-can exposes transmit reports without GLOBAL_ERR. Its send
-  path also has its own acknowledgement wait; an application-level response is
+  path has an optional acknowledgement wait; Signal Explorer requests timeout=0
+  to skip that wait. An application-level response is
   still necessary to prove an ECU processed a request.
 - Kvaser: LOCAL_TXACK requires separate read/write handles, enabled here.
   Reports may include transmissions by other local handles on that channel;

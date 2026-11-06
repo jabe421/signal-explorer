@@ -64,6 +64,7 @@ def test_selective_native_session_tx_rx_trace_and_mf4(fd, tmp_path):
         window._fd.setChecked(fd)
         with patch('signal_explorer.bus.service.can.Bus', return_value=wire) as factory:
             window._toggle_connection()
+            assert wait_for(lambda: window._service.is_connected)
         args = factory.call_args.kwargs
         assert args['channel'] == [0,1] and args['serial'] == 123
         assert 'channel_index' not in args and not args['receive_own_messages']

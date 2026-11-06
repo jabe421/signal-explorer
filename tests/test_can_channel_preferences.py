@@ -7,7 +7,7 @@ from signal_explorer.bus.discovery import ChannelOption
 from signal_explorer.ui.adapter_preferences import CanChannelPreferences
 from signal_explorer.ui.can_channels import CanChannelsDialog
 from signal_explorer.ui.main_window import MainWindow
-from test_multichannel import LoopBus
+from test_multichannel import LoopBus, wait_for
 
 app = QApplication.instance() or QApplication([])
 
@@ -33,8 +33,10 @@ def test_subset_survives_disconnect_refresh_and_relaunch_without_connecting():
             choose(first,available[:2])
             with patch('signal_explorer.bus.service.can.Bus',return_value=LoopBus()) as factory:
                 first._toggle_connection()
+                assert wait_for(lambda: first._service.is_connected)
             assert factory.call_args.kwargs['channel']==[0,1]
             first._toggle_connection()
+            assert wait_for(lambda: not first._service.busy)
             assert [c['channel'] for c in first._enabled_can_configs]==[0,1]
             first._refresh.click()
             assert [c['channel'] for c in first._enabled_can_configs]==[0,1]
@@ -147,6 +149,7 @@ def test_default_channel_on_first_connection_remembers_device_and_single_channel
             first._backend.setCurrentIndex(first._backend.findData('vector'))
             with patch('signal_explorer.bus.service.can.Bus',return_value=LoopBus()):
                 first._toggle_connection()
+                assert wait_for(lambda: first._service.is_connected)
             prefs=CanChannelPreferences('vector')
             assert prefs.last_device()=='123' and len(prefs.channels('123'))==1
         finally:first.close()

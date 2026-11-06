@@ -124,8 +124,11 @@ class Features(unittest.TestCase):
         try:
             window._service.connect_bus(BACKENDS[0], str(uuid.uuid4()), 500000, False)
             window._send_message()
+            from test_multichannel import wait_for
+            self.assertTrue(wait_for(lambda: window._main_tx_future is None))
             window._tx_data.setText('AA BB')
             window._send_message()
+            self.assertTrue(wait_for(lambda: window._main_tx_future is None))
             window._service._flush_display()
             self.assertEqual(window._model.rowCount(), 1)
             self.assertEqual(window._model.data(window._model.index(0, 7)), 'AA BB')

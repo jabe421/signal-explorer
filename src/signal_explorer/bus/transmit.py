@@ -178,7 +178,8 @@ class TransmitEngine(QObject):
         self._entries, self._counts, self._errors, self._versions = {}, {}, {}, {}
         self._instances = {}
         self._last_data = {}
-        self._active, self._pending, self._inflight = {}, deque(), None
+        self._active, self._pending, self._inflight = {}, deque(), {}
+        self._retries, self._retry_total, self._missed = {}, {}, {}
         self._closed = False
         self._last_notice = 0
         service.about_to_disconnect.connect(self.stop_all)
@@ -194,7 +195,7 @@ class TransmitEngine(QObject):
     def state(self, uid):
         with self._condition:
             return (self._counts.get(uid, 0), uid in self._active,
-                    uid == self._inflight or any(job[0] == uid for job in self._pending), self._errors.get(uid, ''))
+                    uid in self._inflight or any(job[0] == uid for job in self._pending), self._errors.get(uid, ''))
 
     def last_data(self, uid):
         with self._condition: return self._last_data.get(uid, self._entries[uid].data)
@@ -221,7 +222,7 @@ class TransmitEngine(QObject):
             # Preflight the entire new configuration before changing a running
             # schedule. An unchanged Default TX retains its pinned destination.
             target = None
-            if not stopping and (runtime or queued or self._inflight == entry.uid):
+            if not stopping and (runtime or queued or entry.uid in self._inflight):
                 pinned = runtime[4] if runtime else queued[0][2].channel if queued else None
                 effective = replace(entry, channel=pinned) if entry.channel == old.channel and pinned is not None else entry
                 target = self._prepare(effective).channel
@@ -252,6 +253,7 @@ class TransmitEngine(QObject):
                 self._entries.pop(uid, None); self._counts.pop(uid, None); self._errors.pop(uid, None)
                 self._last_data.pop(uid, None)
                 self._instances.pop(uid, None)
+                self._retries.pop(uid, None); self._retry_total.pop(uid, None); self._missed.pop(uid, None)
         self.changed.emit()
 
     def replace_entries(self, entries):
@@ -266,6 +268,7 @@ class TransmitEngine(QObject):
             self._counts = {e.uid: 0 for e in entries}
             self._versions = {e.uid: self._versions.get(e.uid, 0) + 1 for e in entries}
             self._errors.clear(); self._last_data.clear()
+            self._retries.clear(); self._retry_total.clear(); self._missed.clear()
         self.changed.emit()
 
     def _prepare(self, entry):
@@ -298,6 +301,7 @@ class TransmitEngine(QObject):
                 if self.state(entry.uid)[1] or self.state(entry.uid)[2]: raise ValueError('One selected message is already running or pending.')
             for entry, msg in prepared:
                 self._errors.pop(entry.uid, None)
+                self._retries.pop(entry.uid, None)
                 version = self._versions[entry.uid]
                 if cyclic: self._active[entry.uid] = [now, now, 0, version, msg.channel]
                 else: self._pending.append((entry.uid, version, msg))
@@ -308,6 +312,9 @@ class TransmitEngine(QObject):
         with self._condition:
             for uid in uids:
                 self._active.pop(uid, None)
+                future = self._inflight.get(uid)
+                if future is not None: future.cancel()
+                self._retries.pop(uid, None)
                 self._versions[uid] = self._versions.get(uid, 0) + 1
             self._pending = deque(job for job in self._pending if job[0] not in uids)
             self._condition.notify_all()
@@ -323,12 +330,73 @@ class TransmitEngine(QObject):
             self._closed = True; self._condition.notify_all()
         self._worker.join(2)
 
+    def diagnostics(self, uid):
+        with self._condition:
+            return dict(retries=self._retry_total.get(uid, 0), missed_cycles=self._missed.get(uid, 0))
+
+    def _deliver(self, uid, version, instance, msg, runtime):
+        with self._condition:
+            if (self._closed or version != self._versions.get(uid)
+                    or self._instances.get(uid) is not instance):
+                return None
+            row = self._entries.get(uid)
+            if runtime is not None:
+                current = self._active.get(uid)
+                if current is None: return None
+                msg = row.frame(current[4], time.monotonic()-current[1], runtime[2])
+            else:
+                # Apply live edits immediately before a queued send starts.
+                msg = row.frame(msg.channel if row.channel is None else row.channel)
+                msg = self._prepare(replace(row, channel=msg.channel))
+        result = self.service.send_message(msg, report_errors=False, raise_on_error=True)
+        if not result:
+            raise RuntimeError('Adapter rejected TX; check connection, channel, FD settings and bus status.')
+        return bytes(msg.data)
+
+    def _completed(self, uid, version, instance, runtime, future):
+        from signal_explorer.bus.tx_dispatch import TxFailure
+        error = ''
+        payload = None
+        retryable = False
+        try:
+            if not future.cancelled(): payload = future.result()
+        except Exception as exc:
+            retryable = isinstance(exc, TxFailure) and exc.retryable
+            error = str(exc)
+        terminal = False
+        with self._condition:
+            if self._inflight.get(uid) is future: self._inflight.pop(uid, None)
+            if self._instances.get(uid) is instance:
+                if error and version == self._versions.get(uid):
+                    attempts = self._retries.get(uid, 0)
+                    if retryable and runtime is not None and uid in self._active and attempts < 3:
+                        self._retries[uid] = attempts+1
+                        self._retry_total[uid] = self._retry_total.get(uid, 0)+1
+                        self._active[uid][0] = time.monotonic()+.02*(2**attempts)
+                        self._errors[uid] = f'Retry {attempts+1}/3 after rejected TX: {error}'
+                    else:
+                        self._errors[uid] = error
+                        self._active.pop(uid, None)
+                        terminal = True
+                elif payload is not None:
+                    self._counts[uid] += 1
+                    self._last_data[uid] = payload
+                    self._retries.pop(uid, None); self._errors.pop(uid, None)
+            notice = runtime is None or bool(error) or time.monotonic()-self._last_notice >= .05
+            if notice: self._last_notice = time.monotonic()
+            self._condition.notify_all()
+            closed = self._closed
+        if not closed:
+            if terminal: self.failed.emit(error)
+            if notice: self.progress.emit()
+
     def _run(self):
         while True:
             with self._condition:
                 if self._closed: return
                 now = time.monotonic()
-                due = min(self._active, key=lambda uid: self._active[uid][0], default=None)
+                due = min((uid for uid in self._active if uid not in self._inflight),
+                          key=lambda uid: self._active[uid][0], default=None)
                 if self._pending:
                     uid, version, msg = self._pending.popleft()
                     row, runtime = self._entries.get(uid), None
@@ -336,40 +404,18 @@ class TransmitEngine(QObject):
                     uid, row = due, self._entries[due]
                     deadline, started, tick, version, target = self._active[uid]
                     period = row.period_ms / 1000
-                    self._active[uid][0] = deadline + (math.floor((now-deadline)/period)+1)*period
+                    skipped = math.floor((now-deadline)/period)
+                    self._missed[uid] = self._missed.get(uid, 0)+skipped
+                    self._active[uid][0] = deadline+(skipped+1)*period
                     self._active[uid][2] += 1
-                    msg, runtime = None, (target, now-started, tick)
+                    msg, runtime = row.frame(target), (target, now-started, tick)
                 else:
                     self._condition.wait(None if due is None else max(0, self._active[due][0]-now))
                     continue
                 if row is None or version != self._versions.get(uid): continue
-                self._inflight = uid
                 instance = self._instances.get(uid)
-            error = ''
-            try:
-                if runtime is not None: msg = row.frame(*runtime)
-                with self._condition:
-                    cancelled = version != self._versions.get(uid) or self._instances.get(uid) is not instance
-                    if cancelled:
-                        self._inflight = None
-                        self._condition.notify_all()
-                if cancelled:
-                    self.progress.emit()
-                    continue
-                if not self.service.send_message(msg, report_errors=False):
-                    raise RuntimeError('Adapter rejected TX; check connection, channel, FD settings and bus status.')
-            except Exception as exc:
-                error = f'{row.name}: {exc}'
-            with self._condition:
-                self._inflight = None
-                if self._instances.get(uid) is instance:
-                    if error and version == self._versions.get(uid) and self._entries.get(uid) is row:
-                        self._errors[uid] = error; self._active.pop(uid, None)
-                    elif not error:
-                        self._counts[uid] += 1
-                        self._last_data[uid] = bytes(msg.data)
-                notice = runtime is None or error or time.monotonic()-self._last_notice >= .05
-                if notice: self._last_notice = time.monotonic()
-                self._condition.notify_all()
-            if error: self.failed.emit(error)
-            if notice: self.progress.emit()
+                future = self.service.submit_operation(msg.channel, lambda u=uid,v=version,i=instance,m=msg,r=runtime:
+                                                        self._deliver(u,v,i,m,r))
+                self._inflight[uid] = future
+                future.add_done_callback(lambda f,u=uid,v=version,i=instance,r=runtime:
+                                         self._completed(u,v,i,r,f))
