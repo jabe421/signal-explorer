@@ -3,12 +3,12 @@ from collections import deque
 import json
 import math
 from pathlib import Path
-from queue import Queue, Empty, Full
 import sys
 from threading import RLock
 import time
 
 from PySide6.QtCore import QObject, QProcess, QProcessEnvironment, QTimer, Qt, Signal
+from signal_explorer.scripting.mailbox import ReceiveMailbox
 
 
 class ScriptController(QObject):
@@ -16,6 +16,7 @@ class ScriptController(QObject):
     output = Signal(str)
     line_changed = Signal(int)
     finished = Signal(str)
+    _receive_ready = Signal()
     MAX_RECEIVE = 2000
 
     def __init__(self, transport, parent=None):
@@ -24,14 +25,17 @@ class ScriptController(QObject):
         self.process = None
         self.state = 'idle'; self.outcome = None; self.line = 0
         self._lock = RLock(); self._accepting = False
-        self._events = Queue(maxsize=self.MAX_RECEIVE)
-        self._overflow = False
+        self._events = ReceiveMailbox(self.MAX_RECEIVE)
+        self._capture_filter = transport.capture_filter(None)
+        self._receive_waiting = self._wake_queued = self._drop_warning = False
+        self._receive_match = None
         self._pending = None; self._deferred = deque()
         self._buffer = b''; self._result = None; self._failure = None
         self._pause_at = None; self._want_pause = False
         self._timer = QTimer(self); self._timer.setInterval(20); self._timer.timeout.connect(self._tick)
         self._kill_timer = QTimer(self); self._kill_timer.setSingleShot(True)
         self._kill_timer.timeout.connect(self._kill)
+        self._receive_ready.connect(self._on_receive_ready, Qt.ConnectionType.QueuedConnection)
         transport.traffic.connect(self._capture, Qt.ConnectionType.DirectConnection)
         transport.about_to_disconnect.connect(self._disconnected)
 
@@ -49,8 +53,11 @@ class ScriptController(QObject):
         self._result = self._failure = None
         self._want_pause = False; self._pause_at = None
         with self._lock:
-            self._events = Queue(maxsize=self.MAX_RECEIVE)
-            self._overflow = False; self._accepting = True
+            self._events = ReceiveMailbox(self.MAX_RECEIVE)
+            self._capture_filter = self.transport.capture_filter(None)
+            self._receive_waiting = self._wake_queued = self._drop_warning = False
+            self._receive_match = None
+            self._accepting = True
         if getattr(sys, 'frozen', False):
             executable = Path(sys.executable).with_name('SignalExplorer-ScriptWorker.exe')
             if not executable.is_file():
@@ -104,7 +111,8 @@ class ScriptController(QObject):
     def stop(self, reason='Stopped by user.'):
         if not self.active or self.state == 'stopping': return
         self.output.emit(reason+'\n')
-        with self._lock: self._accepting = False
+        with self._lock:
+            self._accepting = self._receive_waiting = False
         self._pending = None; self._deferred.clear()
         self._write(dict(type='stop')); self._set_state('stopping')
         self._kill_timer.start(1000)
@@ -119,32 +127,53 @@ class ScriptController(QObject):
 
     def _capture(self, event):
         # Runs on the service's RX/TX thread. Never use a widget/QProcess here.
+        wake = False
         with self._lock:
             if not self._accepting: return
-            try: self._events.put_nowait(self.transport.encode(event))
-            except Full: self._overflow = True
+            encoded = self.transport.encode(event)
+            if not self._capture_filter(encoded):
+                self._events.reject()
+                return
+            self._events.append(encoded)
+            if self._receive_waiting and not self._wake_queued and self._receive_match(encoded):
+                self._wake_queued = wake = True
+        if wake:
+            self._receive_ready.emit()
+
+    def _on_receive_ready(self):
+        with self._lock:
+            self._wake_queued = False
+        self._tick()
 
     def _tick(self):
         if not self.active or self.state == 'stopping': return
         if not self.transport.is_connected:
             self._disconnected(); return
-        with self._lock: overflow = self._overflow
-        if overflow:
-            self._failure = 'Script receive queue overflow. Test stopped; monitoring/logging use independent paths.'
-            self.stop(self._failure); return
+        dropped = self._events.stats()['dropped']
+        if dropped and not self._drop_warning:
+            self._drop_warning = True
+            self.output.emit('Warning: script receive buffer dropped oldest frames. '
+                             'Inspect se.can.stats()["dropped"]; use capture filters or flush old traffic.\n')
         if self._want_pause: return
         while self._deferred and self.state != 'stopping': self._request(self._deferred.popleft())
         if self._pending:
             request = self._pending
             # Bounded work per tick preserves UI responsiveness under load.
-            for _ in range(self.MAX_RECEIVE):
-                try: event = self._events.get_nowait()
-                except Empty: break
-                if not self.transport.matches(event, request['parameters']):continue
-                self._reply(request['id'], event); self._pending = None
+            for sequence, event, arrived in self._events.after(request['cursor']):
+                request['cursor'] = sequence
+                if request['deadline'] is not None and arrived > request['deadline']:
+                    continue
+                if not request['match'](event): continue
+                matched = self._events.take(sequence)
+                if matched is None: continue  # Evicted concurrently; loss is counted.
+                self._pending = None
+                with self._lock: self._receive_waiting = False
+                self._reply(request['id'], matched)
                 break
             if self._pending and request['deadline'] is not None and time.monotonic() >= request['deadline']:
-                self._reply(request['id'], None); self._pending = None
+                self._pending = None
+                with self._lock: self._receive_waiting = False
+                self._reply(request['id'], None)
 
     def _reply(self, identifier, result=None, error=None):
         reply = dict(type='response', id=identifier)
@@ -160,13 +189,27 @@ class ScriptController(QObject):
             method, parameters = event['method'], event['parameters']
             if method == 'send':
                 self._reply(event['id'], self.transport.send(parameters))
+            elif method == 'stats':
+                self._reply(event['id'], self._events.stats())
+            elif method == 'flush':
+                self._reply(event['id'], self._events.flush())
+            elif method == 'set_filters':
+                predicate = self.transport.capture_filter(parameters.get('filters'))
+                with self._lock:
+                    self._capture_filter = predicate
+                    discarded = self._events.flush(keep=predicate)
+                self._reply(event['id'], discarded)
             elif method == 'recv':
                 if self._pending: raise RuntimeError('Only one outstanding receive is supported per script.')
                 timeout = parameters.get('timeout')
                 if timeout is not None and (not math.isfinite(timeout) or timeout < 0):
                     raise ValueError('Invalid receive timeout.')
-                self._pending = dict(id=event['id'], parameters=parameters,
+                match = self.transport.receive_matcher(parameters)
+                self._pending = dict(id=event['id'], match=match, cursor=0,
                                      deadline=time.monotonic()+timeout if timeout is not None else None)
+                with self._lock:
+                    self._receive_match = match
+                    self._receive_waiting = True
                 self._tick()
             else: raise ValueError('Unsupported script operation: '+method)
         except Exception as exc: self._reply(event['id'], error=exc)
@@ -217,7 +260,8 @@ class ScriptController(QObject):
         self._stderr(process)
         was_stopping = self.state == 'stopping'
         self._timer.stop(); self._kill_timer.stop()
-        with self._lock: self._accepting = False
+        with self._lock:
+            self._accepting = self._receive_waiting = False
         result = self._result or {}
         self.outcome = ('failed' if self._failure else 'stopped' if was_stopping else
                         result.get('outcome', 'failed'))
@@ -226,5 +270,8 @@ class ScriptController(QObject):
             self.output.emit(f'Script process exited without a result (exit code {code}).\n')
         self._pending = None; self._deferred.clear()
         self.process = None; process.deleteLater()
+        dropped = self._events.stats()['dropped']
+        if dropped:
+            self.output.emit(f'Script receive buffer: {dropped} oldest frame(s) dropped during this run.\n')
         self.output.emit(f"{self.outcome.upper()} ({result.get('checks', 0)} checks)\n")
         self._set_state(self.outcome); self.finished.emit(self.outcome)

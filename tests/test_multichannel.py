@@ -191,6 +191,16 @@ def test_script_routes_and_filters_explicit_physical_channels():
         encoded=transport.encode(can.Message(channel=1,arbitration_id=0x321,data=bytes(32),is_fd=True))
         assert transport.matches(encoded,dict(channel='CAN2',arbitration_id=0x321))
         assert not transport.matches(encoded,dict(channel='CAN1',arbitration_id=0x321))
+        assert transport.receive_matcher(dict(channel='CAN2', extended=True))(encoded)
+        capture = transport.capture_filter([dict(can_id=0x320, can_mask=0x1ffffff0,
+                                                  extended=True, direction='rx', channel='CAN2')])
+        assert capture(encoded)
+        assert not capture(dict(encoded, direction='tx'))
+        assert not capture(dict(encoded, is_extended_id=False))
+        assert not capture(dict(encoded, channel='0'))
+        assert not capture(dict(encoded, arbitration_id=0x331))
+        with pytest.raises(ValueError, match='not enabled'):
+            transport.capture_filter([dict(can_id=0x321, can_mask=0x7ff, channel='CAN3')])
         with pytest.raises(RuntimeError):
             transport.send(dict(arbitration_id=0x321,data='00',channel='CAN3'))
     finally:service.disconnect_bus()

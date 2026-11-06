@@ -93,16 +93,16 @@ p('CAN / CAN FD, LIN and Ethernet desktop workbench','Centered')
 story.append(Spacer(1,22))
 figure('can.png','Figure 1: Signal Explorer running virtual CAN FD traffic with the demo DBC.')
 story.append(Spacer(1,16))
-p('Application version 0.1.0 - Multi-channel CAN and live transmit lists<br/>Document revision 1.5 - November 2, 2026','Centered')
+p('Application version 0.1.0 - Busy-bus monitoring and scripting<br/>Document revision 1.6 - November 5, 2026','Centered')
 note('This guide describes the current source build. Hardware driver integration is not a physical-bus qualification. '
      'NI-XNET USB-8502, native LIN and ValueCAN Ethernet await powered bench verification. Passive PC Ethernet capture has been checked. '
-     'Ethernet TX is implemented but awaits physical testing. SENT, CAN XL, signal plotting and installers are not implemented.')
+     'Ethernet TX awaits physical testing. SENT, CAN XL and signal plotting are not implemented. A Windows installer beta is available; vendor drivers remain separate.')
 p('Read this guide alongside Install guide.pdf. Install guide covers deployment; this manual covers operation, hardware selection, verification and recovery.','Small')
 
 # 2 ---------------------------------------------------------------------------
 page('Contents and document scope','contents')
 table(['Section','Pages','Use it for'],[
-    ['<link href="#release_nov2">November 2 release changes</link>',page_range('release_nov2'),'Multi-channel CAN, live TX lists and saved selections.'],
+    ['<link href="#release_nov5">November 5 release changes</link>',page_range('release_nov5'),'Batched CAN display, script buffering and timing.'],
     ['<link href="#s1">1. System prerequisites &amp; hardware profile</link>',page_range('s1','ni_profile'),'PC requirements, rates, FD, isolation and NI-XNET scope.'],
     ['<link href="#s2">2. Mandatory driver/software setup</link>',page_range('s2'),'Preparation before USB or bus connection; Npcap.'],
     ['<link href="#s3">3. Connection &amp; verification</link>',page_range('s3','can_channels'),'CAN, NI USB-8502, LIN and Ethernet checks.'],
@@ -115,7 +115,7 @@ table(['Section','Pages','Use it for'],[
 h('How to read the support statements')
 p('<b>Implemented</b> means there is an application code path. <b>Mock tested</b> means API behavior was checked without electrical traffic. '
   '<b>Physically observed</b> means the specific observation stated was made; it does not imply all rates, adapters or features are qualified.')
-p('This release has 196 passing automated tests, including adapter preferences and DBC editing. Existing CANable reception is distinct from native driver mock coverage. '
+p('This release has 219 passing automated tests, including adapter preferences and DBC editing. Existing CANable reception is distinct from native driver mock coverage. '
   'ValueCAN4-2EL VE0245 and five PC Ethernet interfaces were discovered on the development PC. Passive capture on its active Ethernet port worked; '
   'no application-generated physical Ethernet TX or powered ValueCAN Ethernet/LIN verification was performed.')
 h('Manual conventions')
@@ -139,6 +139,19 @@ table(['Change','Current behavior'],[
 ], [1.45,4.7], 'Changes implemented October 29, 2026.')
 p('The separate <b>Scripting User\'s Guide.pdf</b> introduces Python and provides commented, downloadable source examples for CAN/MCU tests.','Small')
 
+page('November 5, 2026: busy-bus improvements','release_nov5')
+table(['Area','Current behavior'],[
+    ['CAN display batching','A bounded 20000-observation queue drains up to 2000 every 40 ms. Model row ranges update once per batch, counters about 10 times/s and scrolling once per batch. Display drops reports overwritten queued observations separately from logging.'],
+    ['DBC and signal tree','Indexed ID/format definitions and lazy decode caches shared by summary/child cells. Constant-time history row and signal-parent lookup. Latest values, channel counts and history switching are preserved.'],
+    ['Script receive history','The separate 2000-frame script ring retains nonmatching traffic. Waiting for A no longer consumes B. Full buffers drop oldest entries during sleep/pause and warn instead of automatically stopping the script.'],
+    ['Script buffer controls','se.can.stats() reports buffered/received/consumed/dropped/filtered/flushed and capacity. flush() clears history without resetting loss. Check dropped before accepting test evidence. Counters reset per Run.'],
+    ['Script capture filters','set_filters accepts ORed can_id/can_mask dictionaries, optionally extended/direction/channel. These affect only this script; None/[] restores all data frames. Changes prune buffered nonmatches; invalid edits preserve the old configuration.'],
+    ['TX and timing','se.can.send returns the exact local TX observation timestamp (Unix seconds), not wire time or peer ACK. Worker waits use notifications; matching receives have a coalesced wakeup. Use frame timestamps for timing checks and account for clock alignment/driver latency.'],
+], [1.45,4.7], 'No new runtime dependencies; CAN/CAN FD scripting remains the only Python bus transport.')
+h('Verification')
+p('219 automated tests pass, including high-load sleep/pause buffering, out-of-order A/B receives, loss counters, filters/flush, TX timestamp identity and notifications without polling. A 4000-frame virtual-bus burst records every frame while the trace retains its configured history. Local 20000-frame model ingestion improved from 4.39 s to 0.14 s; this is a synthetic model benchmark, not physical throughput qualification.')
+p("The Scripting User's Guide revision 1.2 and docs/scripting.md show the new API. Script Output includes a loss warning and final drop total. A script can still fail its own checks, timeout, fail on disconnect or overflow its output; buffer loss is now an explicit test-policy decision.",'Small')
+
 page('November 2, 2026: release changes','release_nov2')
 table(['Change','Current behavior'],[
     ['Selective CAN channels','Enable channels... lists physical devices and individual CAN ports. Open only the checked ports, sharing bitrate and Classic/FD timing. Choose one TX channel.'],
@@ -150,12 +163,12 @@ table(['Change','Current behavior'],[
     ['Recording and scripts','MF4 preserves separate CAN BusChannel values and an embedded channel map. Python send/recv accept an enabled channel label or native ID. Replay selects one source bus and one TX destination.'],
 ], [1.5,4.6], 'November 2 source build; application version remains 0.1.0.')
 h('Validation and hardware scope')
-p('196 automated tests pass. One physical VN1630A test at 500 kbit/s Classic CAN sent standard ID 5A1 on CAN1 and received identical bytes on CAN2. Only those two ports were opened and the session was released afterward. Physical CAN FD and the new transmit-list workflows remain unqualified; FD routing and multi-message behavior use virtual/mock tests.')
+p('219 automated tests pass. One physical VN1630A test at 500 kbit/s Classic CAN sent standard ID 5A1 on CAN1 and received identical bytes on CAN2. Only those two ports were opened and the session was released afterward. Physical CAN FD and the new transmit-list workflows remain unqualified; FD routing and multi-message behavior use virtual/mock tests.')
 p('The Intrepid neoVI FIRE 3 profile exposes 16 CAN networks and lists 8 LIN networks in inventory. This is mock-tested CAN discovery/routing, not a new FIRE 3 LIN transport. Existing native LIN/Ethernet qualification limits still apply.','Small')
 
 page('1 System prerequisites & hardware profile','s1')
 h('1.1 PC and software prerequisites')
-bullets(['Use Windows 10/11 x64 with <b>64-bit Python 3.12</b> for the documented setup. The package declares Python 3.11+, but that is not a cross-version test guarantee.',
+bullets(['Source setup uses Windows 10/11 x64 and <b>64-bit Python 3.12</b>. The installer beta bundles Python and targets Windows 10 1809+ or Windows 11 x64. The package declares Python 3.11+; that is not a cross-version test guarantee.',
          'Keep the project in a writable folder and create its own .venv. Allow disk space for Python packages, temporary captures and saved MF4 files; no sustained-load RAM/storage minimum has been qualified.',
          'The main packages are PySide6-Essentials, python-can[mf4], asammdf, pyserial, cantools, uptime and ldfparser. Intrepid adds python-ics and filelock.',
          'Obtain the correct bus description, connector/cable part number, baud rates and a known-good second node before physical testing. Hardware detection alone does not prove a healthy bus.'])
@@ -686,7 +699,7 @@ p('Restart the application and make a fresh recording. Existing MF4 files are no
 table(['Symptom','Action'],[
     ['This example requires Virtual CAN','Choose Virtual, Inject demo traffic and Connect, or use a reviewed hardware-specific test instead of the built-in demo.'],
     ['No 221 reply / test timeout','Enable demo traffic for 321/221. For a physical MCU, check ID, format, payload contract, rate, channel and peer response. Local TX alone is insufficient.'],
-    ['Receive mailbox overflow','The script queue holds 2000 events independently of the display. Stop, reduce test load or consume promptly; long pauses can fill it. The test fails explicitly.'],
+    ['Receive mailbox overflow','The independent 2000-frame ring overwrites oldest data and warns without automatically stopping. Use se.can.stats(), flush() and set_filters(); verify dropped counts before accepting results.'],
     ['Pause remains Pausing','A blocking native call must return to a Python checkpoint. Prefer se.sleep and se.can.recv over time.sleep or direct driver calls.'],
     ['Stop or disconnect','Further script bus operations are rejected. Stop is cooperative, then the worker may be killed after one second. Finally blocks are not guaranteed; inspect MCU state separately.'],
     ['Logfile Replay unavailable','Wait for loading; connect the matching protocol, select a replay-capable LIN role if applicable, and stop any other playback for that protocol.'],
@@ -878,6 +891,7 @@ p('Vector\'s official CDN rejected the local download during preparation. Vector
   'for current revision details, use the official manual/Hardware Manager before wiring. Conditional piggy tables are examples and do not identify the user\'s two uninspected LIN piggies.','Small')
 page('7.11 Revision history and validation','revision')
 table(['Revision / date','Change'],[
+    ['1.6 / November 5, 2026','Busy-bus CAN batching and cached DBC/tree lookup; retained script history, drop counters, flush/capture filters, local TX timestamps and notification-driven waits.'],
     ['1.0 / October 25, 2026','Initial CAN/FD/LIN guide, workflows, fault recovery, adapter pinouts and CLI.'],
     ['1.1 / October 26, 2026','Ethernet simulation, PC Npcap and ValueCAN4-2EL: installation, discovery, GUI map, sending/filtering, MF4/replay, diagnostics, connectors and validation scope.'],
     ['1.2 / October 29, 2026','Python editor/runner and CAN API; continuous 321/221 demo; File Viewer and read-only timed MF4 replay; SE icon/splash; Intrepid clock alignment and replay discontinuity/timeout fixes. Companion Scripting User\'s Guide and nine source examples added.'],
@@ -888,7 +902,7 @@ table(['Revision / date','Change'],[
 p('VN1630A serial 604069: one Classic CAN frame at 500 kbit/s, ID 5A1 and bytes A5 5A 01 02 03 04 05 06, was received on CAN2 after CAN1 TX. Physical FD and multi-message qualification remain pending; FIRE 3 inventory/routing uses mocks.','Small')
 p('Signal Explorer is the application name used here. Vendor names identify supported interfaces and source documents; this guide does not imply vendor endorsement, product certification or independent ASAM conformance certification.','Small')
 h('Validation for this edition')
-p('196 automated tests cover adapter preference restoration, DBC editing/validation/save isolation, the existing protocols, NI-XNET discovery/native session conversion and MF4 RX/TX, editor controls, pause/stop, replay direction/timing, log loading, timestamp alignment and the documented script examples. '
+p('219 automated tests cover adapter preference restoration, DBC editing/validation/save isolation, the existing protocols, NI-XNET discovery/native session conversion and MF4 RX/TX, editor controls, pause/stop, replay direction/timing, log loading, timestamp alignment and the documented script examples. '
   'Five examples run against built-in virtual traffic; four MCU templates run against a private mock firmware peer after enabling their contract flag in the test harness. '
   'The default MCU templates are also checked to reject transmission before configuration. Native electrical qualification remains outside these tests.')
 p('docs/can-channels.md and docs/transmit-list.md describe the November 2 channel/TX behavior. docs/scripting.md, docs/file-viewer.md and examples/scripts/mcu/ describe testing and replay. '
@@ -910,7 +924,7 @@ def decorate(canvas,doc):
         canvas.line(52,H-41,W-52,H-41)
     canvas.line(52,40,W-52,40)
     canvas.setFont('Helvetica',8)
-    canvas.drawString(52,26,'SIGNAL EXPLORER  |  Revision 1.5  |  November 2, 2026')
+    canvas.drawString(52,26,'SIGNAL EXPLORER  |  Revision 1.6  |  November 5, 2026')
     canvas.drawRightString(W-52,26,str(doc.page))
     canvas.restoreState()
 
@@ -929,4 +943,4 @@ if __name__=='__main__':
         print(f'{i:02} {len(text):4} {title}')
         assert title.replace('&','&') in text.replace('\n',' '),f'Unexpected pagination on page {i}: {title}'
     assert len(reader.pages)==len(pages),'Unexpected overflow page: inspect and adjust layout.'
-    assert len(reader.pages)==45
+    assert len(reader.pages)==46

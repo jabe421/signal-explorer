@@ -88,7 +88,7 @@ story.append(Image(str(ROOT/'src/signal_explorer/assets/signal-explorer-splash.p
 story.append(Spacer(1,20))
 p('SIGNAL EXPLORER','Cover');p("Scripting User's Guide",'Cover')
 p('Basic Python for CAN / CAN FD and MCU testing','Center')
-p('Application 0.1.0 | Document revision 1.1<br/>November 2, 2026','Center')
+p('Application 0.1.0 | Document revision 1.2<br/>November 5, 2026','Center')
 story.append(Spacer(1,14))
 p('Learn the editor, send and receive frames, validate responses, check counters and signals, and build repeatable MCU tests. Nine commented example files accompany this guide.','Center')
 note('This guide uses the current injected <b>se</b> API. Python scripting is CAN/CAN FD only. The generic MCU protocol is fictional and must match your test firmware; the built-in virtual demo is a separate, smaller protocol.')
@@ -96,7 +96,7 @@ note('This guide uses the current injected <b>se</b> API. Python scripting is CA
 page('Contents and example map','contents')
 sections=[('1 First run without hardware','quick'),('2 Editor and execution controls','editor'),
     ('3 Python values, bytes and basic control flow','python_values'),('4 CAN API, timing and results','api'),
-    ('4.2 Explicit CAN-channel testing','channels'),('5 Built-in simulation tests','echo'),('6 MCU contract and bench templates','contract'),
+    ('4.2 Explicit CAN-channel testing','channels'),('4.3 Busy-bus buffering and timing','buffering'),('5 Built-in simulation tests','echo'),('6 MCU contract and bench templates','contract'),
     ('7 Limited UDS single-frame example','uds_scope'),('8 Reusable test patterns','patterns'),
     ('9 Logging, replay and timestamps','evidence'),('9.1 TX lists and channel-aware evidence','tx_evidence'),('10 Troubleshooting and practical limits','troubleshoot'),
     ('Appendix: source files, glossary and references','appendix')]
@@ -205,8 +205,10 @@ table(['API','Meaning and units'],[
     ['se.log(value)','Append a message to Script Output. print(...) is captured too.'],
     ['se.check(condition, description)','Print PASS/FAIL; a false condition normally terminates execution with an assertion.'],
     ['se.sleep(milliseconds)','Interruptible, pause-aware wait. Not a hardware scheduler.'],
-    ['se.can.send(id, data, ...)', 'Send once. Options: extended=False, fd=False, brs=False, channel=None (enabled label or native ID). Uses the connected adapter, channel and FD validation. Raises on failure.'],
+    ['se.can.send(id, data, ...)', 'Send once. Options: extended=False, fd=False, brs=False, channel=None (enabled label or native ID). Returns local TX Unix timestamp (float), not wire time or ACK. Connection/FD validation still applies; raises on failure.'],
     ['se.can.recv(timeout=1.0, ...)', 'Wait in seconds; None waits until a match or Stop. Returns CanFrame or None. Filters: arbitration_id, extended, direction (rx, tx or all), channel (enabled label/native ID). Default direction is rx.'],
+    ['se.can.stats() / flush()', 'Run counters and buffer occupancy; flush clears queued history, preserving the loss counter.'],
+    ['se.can.set_filters(list)', 'Script-only can_id/can_mask capture filters; optional extended, direction and channel. None/[] restores all data frames.'],
 ],(1.45,3.55))
 code('''se.can.send(0x321, bytes(range(8)))
 reply = se.can.recv(2.0, arbitration_id=0x221,
@@ -221,8 +223,8 @@ h('A local TX entry is not an MCU response')
 p('A send uses the main application path, which records one local accepted TX. Receiving with direction="rx" prevents that local echo from satisfying a response check. '
   'Also match the response ID, standard/extended format, length, opcode, sequence or echoed payload as appropriate.')
 h('Do not accept stale data')
-p('A response can already be queued when recv starts. The script has an independent 2000-event mailbox; unmatched events are consumed as it searches. '
-  'Use a transaction field to distinguish a new reply from an old one. Do not overlap requests to different response IDs unless you implement coordinated dispatch: one filtered receive can consume another response.')
+p('A response can already be queued when recv starts. The independent 2000-event ring retains unmatched frames until received, flushed or overwritten. '
+  'Use transaction fields to distinguish new and stale replies. A wait for A preserves buffered B, but overload can still evict it. Use capture filters, flush and stats to manage history and verify loss.')
 h('Use bounded retries')
 p('Send a command once, then wait for its response under the firmware\'s deadline. A retry is a new action: repeated reset, erase or output commands may have side effects. '
   'The GPIO template waits up to ten 0.2-second receives for a matching transaction, rather than blindly resending the command.')
@@ -255,6 +257,28 @@ p('se.session["channels"] contains each port native_channel, label and bus_chann
 h('FD and virtual test boundaries')
 p('Existing scripts without channel arguments continue to work. FD and BRS still require an FD-enabled connection with compatible timing on every enabled port. The built-in single Virtual CAN demo is not an electrical two-port loopback. Use its 321/221 echo examples for hardware-free checks; use the example above only with the corresponding bench wiring.')
 p('One VN1630A CAN1-to-CAN2 Classic CAN frame was physically verified November 2. FD routing and multi-channel mailbox/recording behavior use virtual/mock tests; no physical FD result is implied.','Small')
+
+page('4.3 Busy-bus buffering and timing','buffering')
+p('The script retains up to 2000 eligible CAN data frames. A receive removes only its first match; unrelated frames remain for later calls. During sleep/pause or a slow test, a full buffer overwrites the oldest entry. This increments dropped and produces a warning/final total instead of automatically stopping the run.')
+code("""# Virtual CAN with Inject demo traffic enabled.
+se.can.set_filters([
+    {"can_id": 0x221, "can_mask": 0x7FF, "direction": "rx"},
+    {"can_id": 0x200, "can_mask": 0x7FF, "direction": "rx"},
+])
+se.can.flush()  # Discard earlier buffered observations.
+before = se.can.stats()["dropped"]
+tx_time = se.can.send(0x321, bytes(range(8)))
+reply = se.can.recv(2.0, arbitration_id=0x221, extended=False)
+se.check(reply is not None, "Demo response received")
+se.check(reply.data == bytes(range(8)), "Echo matches")
+se.log(f"Observed RX minus TX: {reply.timestamp-tx_time:.6f} s")
+se.check(se.can.stats()["dropped"] == before, "No buffer loss")""")
+h('Counters, filter scope and stale replies')
+p('stats reports capacity, buffered, received, consumed, dropped, filtered and flushed. Counts reset per Run; flush returns the discarded count and preserves dropped. Capture filters are ORed ID/mask dictionaries, optionally restricted by extended, direction and enabled channel. None/[] restores all data frames. Updates prune queued nonmatches into flushed; invalid updates keep the prior configuration. Only this script is affected, not hardware filters, the trace or logger.')
+p('Check loss over the test interval before accepting evidence. Flush does not prevent a delayed old ECU reply from arriving afterward. Continue checking transaction fields, payload and channel; retained B traffic can predate an A response.')
+h('Timestamp meaning and scheduling')
+p('send now returns a float: the same Unix timestamp as the locally accepted TX event in the monitor/logger. It is not a wire timestamp, ACK or peer receipt. Frame periods should use RX timestamps; TX-to-RX differences depend on driver latency and clock alignment. Mixed clocks can yield misleading or negative differences.')
+p('Worker waits use condition notifications; matching arrivals wake pending receives through a coalesced host notification. Unrelated traffic does not queue GUI wakeups. A 20-ms timer remains for deadlines/connection checks. The former 30-ms worker queue wait already woke immediately on replies; it was not a fixed extra delay.','Small')
 
 page('5 Continuous 321/221 echo demo','echo')
 p('The menu example starts at 00 01 02 03 04 05 06 07 and increments every byte only after a verified response. IDs are standard hexadecimal 321 and 221. The built-in peer runs only on Virtual CAN with Inject demo traffic enabled.')
@@ -447,7 +471,7 @@ table(['Symptom','Check or next action'],[
     ['Timeout / unexpected reply','Match ID, direction, extended format, length and transaction. Check the peer and bus setup. A local TX is not a response.'],
     ['IndexError / wrong decoded values','Check frame is not None and length before indexing. Verify endian, signedness, bit position, scale, offset and units.'],
     ['CAN FD send failed','Connect in FD mode first; verify adapter support, data bitrate and allowed byte count. Classic-only hardware cannot be made FD by a script flag.'],
-    ['Script mailbox overflow','The independent queue holds 2000 events, including unrelated traffic. Long pauses/high input can fill it; reduce load or consume promptly. Failure is explicit.'],
+    ['Script mailbox overflow','The 2000-frame ring drops oldest data, warns and counts loss without stopping. Inspect stats/dropped; apply script capture filters or flush old history. Check loss before accepting results.'],
     ['Pause remains Pausing','A blocking native call has not returned to a checkpoint. Use se.sleep/se.can.recv. Stop rejects further bus API calls and may kill the worker after one second.'],
     ['Input / local helper import error','input() is unsupported. Save scripts/helpers in the same folder; use the same app environment for optional imports.'],
     ['Passed after a caught assertion?','A failed se.check still makes the final outcome FAILED. Do not use it for expected exceptions without a deliberate failure policy.'],
@@ -485,7 +509,7 @@ p('UDS/ISO-TP references were checked October 29, 2026. They explain protocols, 
 
 page('Appendix: validation and next steps','validation')
 h('What was checked for this edition')
-p('196 automated tests cover the application and guide examples, including channel-aware routing and live TX lists. All nine tutorial sources compile. The five virtual examples run through the actual separate-process scripting runner with the built-in demo. '
+p('219 automated tests cover the application and guide examples, including channel-aware routing and live TX lists. All nine tutorial sources compile. The five virtual examples run through the actual separate-process scripting runner with the built-in demo. '
   'The four MCU templates are checked both for their default no-transmit guard and against a private virtual mock firmware peer after enabling the contract flag in the test harness. '
   'The UDS mock emits ResponsePending then a final positive reply; an out-of-range ADC value is also checked to fail the GPIO/ADC test.')
 p('These mock peers live in tests/test_scripting_examples.py and are not a second firmware simulator exposed by the GUI. The test harness does not change the shipped templates\' default guard. '
@@ -503,7 +527,7 @@ steps(['Start with one status/heartbeat arrival check and a known firmware-versi
        'Add reboot recovery, expected command rejection and explicit timeouts.',
        'Store test and firmware revisions alongside MF4 evidence, then verify on the intended physical adapter.'])
 note('SENT, LIN/Ethernet Python scripting, automatic CAPL translation, complete UDS/ISO-TP, fixture power control and integrated test-report export remain future work. Standard Python can write your own report files, but the application does not supply a report API in this release.')
-p('Revision 1.1 - November 2, 2026. Adds enabled-channel tests, TX-list interaction and multi-channel evidence. Companion to User and Install Guide revision 1.5.','Small')
+p('Revision 1.2 - November 5, 2026. Adds retained receive history, loss counters, flush/capture filters, TX timestamps and event-driven waits. Companion to User Guide revision 1.6; installation dependencies are unchanged.','Small')
 
 
 class ManualDoc(SimpleDocTemplate):
@@ -518,7 +542,7 @@ def decorate(canvas,doc):
         canvas.setFont('Helvetica-Bold',9);canvas.drawString(52,H-36,"Signal Explorer Scripting User's Guide")
         canvas.line(52,H-41,W-52,H-41)
     canvas.line(52,40,W-52,40);canvas.setFont('Helvetica',8)
-    canvas.drawString(52,26,'SIGNAL EXPLORER  |  Revision 1.1  |  November 2, 2026')
+    canvas.drawString(52,26,'SIGNAL EXPLORER  |  Revision 1.2  |  November 5, 2026')
     canvas.drawRightString(W-52,26,str(doc.page));canvas.restoreState()
 
 if __name__=='__main__':
@@ -534,4 +558,4 @@ if __name__=='__main__':
         print(f'{index:02} {len(text):4} {title}')
         assert title in text.replace('\n',' '),f'Unexpected pagination at page {index}: {title}'
     assert len(pdf.pages)==len(pages),'Unexpected overflow page'
-    assert len(pdf.pages)==26
+    assert len(pdf.pages)==27

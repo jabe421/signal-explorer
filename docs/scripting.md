@@ -108,13 +108,29 @@ se.sleep(100)
   verdict FAILED. Unhandled standard Python exceptions also fail the run.
 - `se.sleep(milliseconds)`: interruptible wait, with elapsed pause time excluded.
 - `se.can.send(arbitration_id, data=b"", extended=False, fd=False, brs=False, channel=None)`:
-  validates and sends one message through the service; raises on failure.
+  validates and sends once through the service; returns the local TX acceptance
+  timestamp as Unix seconds (float), and raises on failure. It previously returned
+  True; ordinary callers that ignore the result continue to work.
 - `se.can.recv(timeout=1.0, arbitration_id=None, extended=None, direction="rx", channel=None)`:
   return a matching `CanFrame`, or None at timeout. `timeout=None` waits until a
   match or Stop. Direction is `"rx"`, `"tx"` or `"all"`; received frames are the
   default, so a local TX echo is not mistaken for an ECU response. Error/remote
-  frames are excluded from this API. Unmatched frames are consumed from this
-  script's mailbox; other consumers retain their own traffic.
+  frames are excluded from this API. Only the first matching frame is removed;
+  unmatched frames remain available to subsequent receives until flushed or
+  evicted. Thus B arriving while waiting for A can be received afterward.
+- `se.can.stats()`: returns `capacity`, `buffered`, `received`, `consumed`,
+  `dropped`, `filtered` and `flushed` counters. Counters reset at each Run.
+- `se.can.flush()`: discards the currently buffered history and returns its frame
+  count. It preserves the cumulative dropped counter. New arrivals can follow
+  immediately; flush is not a transaction/correlation barrier.
+- `se.can.set_filters(filters=None)`: apply a list of ORed capture filters to this
+  script only. Each requires integer `can_id` and `can_mask`, with optional
+  `extended` (True/False/None), `direction` (rx/tx/all, default all) and `channel`
+  (enabled label/native ID). None or [] restores all eligible CAN data frames.
+  Changes prune queued nonmatches, count them as `flushed`, and return that count.
+  Invalid filter changes leave the previous filters/history intact. At most 256
+  filters are accepted; monitoring, hardware receive filters and logging are
+  unaffected. Error/remote events are excluded before buffering.
 
 `CanFrame` provides `arbitration_id`, immutable `data` bytes, `timestamp`, `channel`,
 `direction`, `is_extended_id`, `is_fd`, `bitrate_switch`, `is_error_frame` and
@@ -155,10 +171,46 @@ runner-controlled behavior. The runner controls its worker process, not arbitrar
 programs spawned by user code. Sub-millisecond/real-time scheduling is not claimed.
 
 RX/TX is copied before monitor filters/pause into an independent 2,000-event script
-mailbox. Paused scripts retain queued events up to that limit. Overflow fails the
-test explicitly rather than silently losing input. It does not stop independent
-monitoring or recording. A response can already be queued when recv starts; use
-transaction identifiers and protocol-aware validation to reject stale responses.
+ring buffer. Sleep/pause and gaps between receives retain history up to that
+limit. Overflow evicts the oldest frame, increments `dropped`, and reports a
+warning plus a final loss total; it does not automatically stop the script.
+`received` counts accepted entries; `filtered` counts rejected captures;
+`flushed` counts intentional clears/pruning, while `consumed` counts successful
+receives. Therefore received = buffered + consumed + dropped + flushed.
+Use capture filters to exclude unrelated traffic and explicitly check loss before
+accepting a test result. Neither buffering policy nor script filters change
+independent monitoring/recording. A response can already be queued when recv
+starts; use transaction identifiers to reject stale responses.
+
+```python
+# Virtual CAN with demo traffic enabled. Keep only relevant RX data frames.
+se.can.set_filters([
+    {"can_id": 0x221, "can_mask": 0x7FF, "extended": False, "direction": "rx"},
+    {"can_id": 0x200, "can_mask": 0x7FF, "extended": False, "direction": "rx"},
+])
+se.can.flush()
+before = se.can.stats()["dropped"]
+tx_time = se.can.send(0x321, bytes(range(8)))
+reply = se.can.recv(2.0, arbitration_id=0x221, extended=False)
+se.check(reply is not None and reply.data == bytes(range(8)), "Demo echo")
+se.log(f"Observed RX minus local TX: {reply.timestamp - tx_time:.6f} s")
+se.check(se.can.stats()["dropped"] == before, "No buffer loss during test")
+```
+
+Measure periods using frame timestamps, rather than `recv()` return times. The
+send result is exactly the host timestamp of the local TX observation used by
+the monitor/logger; it is not hardware wire time, an ACK, or peer receipt. Mixed
+hardware/host clocks and driver latency limit TX-to-RX measurements; check frame
+correlation, clock alignment and loss before asserting timing. Pause and source
+line delay continue to affect script execution.
+
+The worker now uses condition notifications for RPC/control waits. A pending
+receive uses a compiled matcher and a coalesced notification for matching new
+frames; unrelated traffic does not enqueue per-frame GUI wakeups. The 20-ms host
+timer remains for deadlines and connection checks. Previously the worker's
+30-ms queue wait was already interruptible on response arrival, not a fixed
+30-ms delay. Receive deadlines use host monotonic capture arrival: frames that
+arrive after a deadline remain available to the next receive.
 The full UDS/ISO-TP client layer, CAPL conversion and test-result file export are
 not implemented in this release.
 

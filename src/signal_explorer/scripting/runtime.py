@@ -3,9 +3,8 @@ from dataclasses import dataclass
 import json
 import math
 from pathlib import Path
-from queue import Queue, Empty
 import sys
-from threading import Condition, Lock, Thread
+from threading import Condition, Lock, Thread, TIMEOUT_MAX
 import time
 
 
@@ -60,8 +59,8 @@ class ExecutionControl:
                 with self.condition:
                     kind = command.get('type')
                     if kind == 'response':
-                        queue = self.responses.get(command['id'])
-                        if queue is not None: queue.put_nowait(command)
+                        if command['id'] in self.responses:
+                            self.responses[command['id']] = command
                     elif kind == 'pause' and not self.paused:
                         self.paused = True; self.pause_started = time.monotonic()
                     elif kind == 'resume' and self.paused:
@@ -93,7 +92,7 @@ class ExecutionControl:
                     return
                 if not self._pause_reported:
                     self.writer.emit('paused', line=self.line); self._pause_reported = True
-                self.condition.wait(.05)
+                self.condition.wait()
 
     def sleep(self, seconds):
         if not math.isfinite(seconds) or seconds < 0:
@@ -103,20 +102,30 @@ class ExecutionControl:
             self.checkpoint()
             remaining = deadline - self.clock()
             if remaining <= 0: return
-            with self.condition: self.condition.wait(min(.03, remaining))
+            with self.condition:
+                if not (self.paused or self.stopped or self.error):
+                    remaining = deadline-self.clock()
+                    if remaining > 0:
+                        self.condition.wait(min(TIMEOUT_MAX, remaining))
 
     def rpc(self, method, parameters):
         self.checkpoint()
         self.writer.emit('line', line=self.line)
         with self.condition:
             self.serial += 1; identifier = self.serial
-            queue = self.responses[identifier] = Queue()
+            self.responses[identifier] = None
         self.writer.emit('request', id=identifier, method=method, parameters=parameters)
         try:
             while True:
                 self.checkpoint()
-                try: response = queue.get(timeout=.03)
-                except Empty: continue
+                with self.condition:
+                    response = self.responses[identifier]
+                    if response is None:
+                        # Check under the same lock before waiting, so a Pause,
+                        # Stop or response cannot be lost between checks.
+                        if not (self.paused or self.stopped or self.error):
+                            self.condition.wait()
+                        continue
                 self.checkpoint()
                 if 'error' in response: raise RuntimeError(response['error'])
                 return response.get('result')
@@ -142,14 +151,14 @@ class CanClient:
     def __init__(self, control): self.control = control
 
     def send(self, arbitration_id, data=b'', *, extended=False, fd=False, brs=False, channel=None):
-        """Send once through Signal Explorer. data accepts bytes or an iterable."""
+        """Send once; return the local TX acceptance timestamp (Unix seconds)."""
         return self.control.rpc('send', dict(arbitration_id=arbitration_id, data=bytes(data).hex(),
                                              extended=extended, fd=fd, brs=brs, channel=channel))
 
     def recv(self, timeout=1.0, *, arbitration_id=None, extended=None, direction='rx', channel=None):
         """Return a matching frame or None at timeout. None timeout waits until stopped.
 
-        Unmatched events are consumed from this script's independent mailbox.
+        Unmatched events remain available in this script's bounded mailbox.
         Display filters and monitor pause do not affect it. Timeout excludes pause.
         """
         if timeout is not None and (not math.isfinite(timeout) or timeout < 0):
@@ -160,6 +169,22 @@ class CanClient:
         if result is None: return None
         result = dict(result); result.pop('protocol', None); result['data'] = bytes.fromhex(result['data'])
         return CanFrame(**result)
+
+    def stats(self):
+        """Return cumulative run counters and the current receive-buffer size."""
+        return self.control.rpc('stats', {})
+
+    def flush(self):
+        """Discard currently buffered frames; return their count, retaining loss counters."""
+        return self.control.rpc('flush', {})
+
+    def set_filters(self, filters=None):
+        """Set ORed ID/mask capture filters; return buffered frames pruned.
+
+        Each dict has can_id, can_mask, and optional extended, direction, channel.
+        None/[] restores all eligible CAN data frames. Only this script is affected.
+        """
+        return self.control.rpc('set_filters', dict(filters=filters))
 
 
 class ScriptContext:

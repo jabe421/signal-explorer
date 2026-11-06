@@ -214,13 +214,16 @@ class ScriptingTests(unittest.TestCase):
         self.connect();self.assertEqual(self.run_source('se.log("Fresh session")'),'completed')
         self.assertFalse(any(m.arbitration_id==0x555 for m in self.events))
 
-    def test_receive_overflow_fails_explicitly_and_simulation_guard_prevents_tx(self):
+    def test_receive_overflow_is_counted_without_stopping_and_simulation_guard_prevents_tx(self):
         self.connect()
         with patch.object(self.controller,'MAX_RECEIVE',2):self.controller.start('se.sleep(20000)')
         self.assertTrue(wait_for(lambda:self.controller.state=='running'))
         for i in range(5):self.service.traffic.emit(can.Message(arbitration_id=0x200,data=[i],is_extended_id=False))
-        self.assertTrue(wait_for(lambda:not self.controller.active))
-        self.assertEqual(self.controller.outcome,'failed');self.assertIn('overflow',''.join(self.output))
+        self.assertTrue(wait_for(lambda:'dropped oldest' in ''.join(self.output)))
+        self.assertTrue(self.controller.active)
+        self.assertEqual(self.controller._events.stats()['dropped'],3)
+        self.controller.stop();self.assertTrue(wait_for(lambda:not self.controller.active))
+        self.assertEqual(self.controller.outcome,'stopped')
         self.assertTrue(self.service.is_connected)
         with patch.object(self.transport,'session',return_value=dict(protocol='CAN',simulated=False)):
             self.assertEqual(self.run_source(DEMO.read_text(),str(DEMO)),'failed')

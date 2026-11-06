@@ -220,7 +220,7 @@ class BusService(QObject):
         self._display.put(captured, epoch)
         return captured
 
-    def send_message(self, msg: can.Message, report_errors=True) -> bool:
+    def send_message(self, msg: can.Message, report_errors=True, *, return_timestamp=False) -> bool | float:
         with self._send_lock:
             try:
                 if self._bus is None:
@@ -245,7 +245,7 @@ class BusService(QObject):
             self.traffic.emit(echo)
             self._display.put(echo, epoch, legacy=False)
         self.message.emit(echo)
-        return True
+        return echo.timestamp if return_timestamp else True
 
     def disconnect_bus(self) -> None:
         if self._bus is not None:

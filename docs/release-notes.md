@@ -1,5 +1,17 @@
 # Source build release notes
 
+## November 5, 2026: script buffering and timing
+
+Script receive history now retains unmatched frames. Its bounded 2,000-entry
+ring evicts oldest data on overload, counts loss and warns without automatically
+stopping a sleeping/paused script. Add `se.can.stats()`, `flush()` and per-script
+ID/mask/direction/channel capture filters. `send()` returns the exact local TX
+observation timestamp in Unix seconds. Replace worker polling waits with
+condition notifications and wake pending receives only for matching arrivals.
+Timeouts use monotonic capture arrival, preserving late frames for later calls.
+Raw recording and monitor paths remain independent. See [scripting.md](scripting.md)
+for API examples and timing/loss interpretation.
+
 ## November 5, 2026: CAN monitor performance
 
 Batch CAN/CAN FD display updates every 40 ms with a bounded queue and explicit
