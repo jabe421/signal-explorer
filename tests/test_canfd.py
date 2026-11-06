@@ -118,6 +118,7 @@ class CanFD(unittest.TestCase):
             window._send.click()
             self.assertTrue(wait_for(lambda:window._tx_count>=3))
             window._send.click()
+            self.assertTrue(wait_for(lambda:window._main_tx_future is None))
             frames=[]
             while (msg:=peer.recv(0)) is not None:
                 frames.append(msg)

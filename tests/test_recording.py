@@ -180,6 +180,9 @@ class MDFLogging(unittest.TestCase):
         try:
             window._service.connect_bus(BACKENDS[0],str(uuid.uuid4()),500000,False)
             panel.log.click();window._send.click()
+            # Send is asynchronous. Disconnect only after the frame is captured
+            # and its UI completion is consumed, not while TX is still queued.
+            self.assertTrue(wait_for(lambda:panel.recorder.count >= 1 and window._main_tx_future is None))
             with patch('signal_explorer.ui.recording_panel.QFileDialog.getSaveFileName',return_value=(str(self.root/'disconnect.mf4'), '')):
                 window._service.disconnect_bus()
                 self.assertTrue(wait_for(lambda:(self.root/'disconnect.mf4').exists()))
@@ -291,6 +294,7 @@ class MDFLogging(unittest.TestCase):
         panel.log.click();window._send.click()
         output=self.root/'close.mf4'
         try:
+            self.assertTrue(wait_for(lambda:panel.recorder.count >= 1 and window._main_tx_future is None))
             with patch('signal_explorer.ui.recording_panel.QFileDialog.getSaveFileName',return_value=(str(output),'')):
                 window.close()
                 self.assertTrue(wait_for(lambda:output.exists() and not window._service.is_connected))

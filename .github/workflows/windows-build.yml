@@ -43,8 +43,11 @@ jobs:
           python -m pip check
           if ($LASTEXITCODE -ne 0) { throw 'Dependency verification failed.' }
       - name: Run software tests
+        timeout-minutes: 10
         run: |
-          python -m pytest tests -q --junitxml=build/test-results.xml
+          New-Item -ItemType Directory -Force build | Out-Null
+          # Keep the active test and thread stacks visible even if a test hangs.
+          python -u -m pytest tests -vv -s --durations=15 -o faulthandler_timeout=60 --junitxml=build/test-results.xml 2>&1 | Tee-Object -FilePath build/software-tests.log
           if ($LASTEXITCODE -ne 0) { throw 'Software tests failed.' }
       - name: Build and verify the installer
         env:
@@ -63,6 +66,7 @@ jobs:
         with:
           name: Windows-build-diagnostics-${{ github.run_id }}
           path: |
+            build/software-tests.log
             build/test-results.xml
             build/packaging-smoke.json
             build/pyinstaller/**/warn-*.txt

@@ -1,6 +1,7 @@
 import os
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
 import unittest
+import time
 from unittest.mock import patch
 import uuid
 import can
@@ -15,6 +16,15 @@ def process_for(milliseconds):
     loop = QEventLoop()
     QTimer.singleShot(milliseconds, loop.quit)
     loop.exec()
+
+def wait_for(predicate, timeout=3):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        app.processEvents()
+        if predicate():
+            return True
+        time.sleep(.005)
+    return False
 
 class PeriodicSend(unittest.TestCase):
     def setUp(self):
@@ -93,13 +103,13 @@ class PeriodicSend(unittest.TestCase):
         self.window._tx_interval.setText("100")
         with patch.object(self.window._service, "send_message", return_value=False), patch('signal_explorer.ui.main_window.QMessageBox.warning'):
             self.window._send_message()
-            process_for(30)
+            self.assertTrue(wait_for(lambda:self.window._main_tx_future is None))
         self.assertFalse(self.window._tx_timer.isActive())
         self.window._send_message()
-        process_for(30)
+        self.assertTrue(wait_for(lambda:self.window._main_tx_future is None))
         with patch.object(self.window._service, "send_message", return_value=False), patch('signal_explorer.ui.main_window.QMessageBox.warning'):
             self.window._send_repeated_message()
-            process_for(30)
+            self.assertTrue(wait_for(lambda:self.window._main_tx_future is None))
         self.assertFalse(self.window._tx_timer.isActive())
         self.assertEqual(self.window._send.text(), "Send")
 
