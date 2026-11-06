@@ -1,5 +1,22 @@
 # Source build release notes
 
+## November 5, 2026: CAN timestamp provenance and driver TX reports
+
+Add opt-in **Use driver TX reports** for Vector, Intrepid, Kvaser, PEAK PCAN and
+NI-XNET. Request receive-own notifications and omit synthetic TX in this mode.
+The default remains local acceptance estimates; CANable/virtual support remains.
+Use a per-connection monotonic host epoch for CAN estimates and the Intrepid
+shared RX/TX anchor. Preserve other driver-calibrated epoch timestamps.
+Expose source/native timestamp/TX evidence in trace tooltips and script frames.
+`send()` always returns host acceptance time; use a matching `recv(direction="tx")`
+for native reports. Reports are not proof of intended-ECU receipt.
+
+Reorder recorder arrivals within a bounded 50-ms window before chronological
+repair; record reason counts and capped diagnostic samples for corrections.
+CAN MDF session metadata includes timestamp source/evidence counts. Existing logs
+are unchanged. All 230 tests pass, including five mocked native report backends;
+physical timing/driver qualification is pending. See [timestamps.md](timestamps.md).
+
 ## November 5, 2026: script buffering and timing
 
 Script receive history now retains unmatched frames. Its bounded 2,000-entry

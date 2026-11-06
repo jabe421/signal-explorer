@@ -48,6 +48,20 @@ recorded addresses; it provides no TCP/DoIP session reconstruction. Native LIN
 and Ethernet backends exist, with physical qualification limits described in
 the User Guide. Do not reinterpret another protocol's records as CAN frames.
 
+## Timestamp order and TX evidence
+
+The recorder now reorders small arrival skews within a bounded 50-ms window
+without modifying valid timestamps. Larger late arrivals and invalid timestamps
+can still require correction. The embedded session attachment distinguishes
+reordered frames from corrections, includes reason counts and up to 100
+original/corrected/native timestamp samples, and records CAN source/evidence
+counts. This is not clock synchronization or full native-timestamp recovery.
+
+CAN's optional **Use driver TX reports** records only driver-observed TX events;
+the default records host acceptance estimates. Missing native reports are not
+replaced with synthetic confirmations. See [timestamps.md](timestamps.md) for
+per-backend semantics, limitations and metadata fields.
+
 ## Reuse for future protocols
 
 Implement a RecordingCodec with capture, writer, read, replayable and prepare_tx.

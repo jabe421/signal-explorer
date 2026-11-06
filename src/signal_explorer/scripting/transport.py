@@ -65,7 +65,10 @@ class CanScriptTransport(ScriptTransport):
                     arbitration_id=message.arbitration_id, data=bytes(message.data).hex(),
                     is_extended_id=message.is_extended_id, is_fd=message.is_fd,
                     bitrate_switch=message.bitrate_switch, is_error_frame=message.is_error_frame,
-                    is_remote_frame=message.is_remote_frame)
+                    is_remote_frame=message.is_remote_frame,
+                    timestamp_source=getattr(message, 'timestamp_source', 'unspecified'),
+                    raw_timestamp=getattr(message, 'raw_timestamp', None),
+                    tx_confirmation=getattr(message, 'tx_confirmation', 'none'))
 
     def send(self, parameters):
         message = can.Message(arbitration_id=parameters['arbitration_id'],

@@ -67,6 +67,10 @@ class TraceModel(QAbstractItemModel):
             return None
         record = self._rows[index.row()]
         msg = record.frame
+        if role == Qt.ItemDataRole.ToolTipRole and index.column() in (0, 5):
+            return (f"Timestamp: {getattr(msg, 'timestamp_source', 'unspecified')}\n"
+                    f"Native timestamp: {getattr(msg, 'raw_timestamp', None)}\n"
+                    f"TX evidence: {getattr(msg, 'tx_confirmation', 'none')}")
         if role == Qt.ItemDataRole.UserRole:
             return msg.arbitration_id
         if role != Qt.ItemDataRole.DisplayRole:

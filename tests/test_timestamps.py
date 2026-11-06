@@ -6,6 +6,7 @@ import json
 import unittest
 from unittest.mock import patch
 import uuid
+from types import SimpleNamespace
 
 import can
 from PySide6.QtWidgets import QApplication
@@ -56,7 +57,8 @@ class TimestampTests(unittest.TestCase):
         service=BusService();captured=[];displayed=[]
         service.traffic.connect(captured.append);service.message.connect(displayed.append)
         try:
-            with patch('signal_explorer.bus.service.can.Bus',return_value=bus),patch('signal_explorer.bus.service.DeviceLease'):
+            with patch('signal_explorer.bus.service.can.Bus',return_value=bus),patch('signal_explorer.bus.service.DeviceLease'), \
+                 patch('signal_explorer.bus.service.SessionClock', return_value=SimpleNamespace(now=lambda: time.time())):
                 service.connect_bus(next(b for b in BACKENDS if b.interface=='neovi'),'HSCAN',500000,False)
             with patch('signal_explorer.bus.timestamps.time.time',return_value=1800000000.0):
                 peer.send(can.Message(timestamp=1167609638.9249353,arbitration_id=0x100,data=[1],is_extended_id=False))

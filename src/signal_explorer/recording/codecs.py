@@ -43,6 +43,8 @@ class CANEventWriter:
         self.writer._mdf.header.author = "Signal Explorer"
         self.channel_map = {}
         self.channel_details = []
+        self.timestamp_sources = {}
+        self.tx_evidence = {}
 
     def configure_channels(self, channels):
         for channel in channels:
@@ -54,6 +56,11 @@ class CANEventWriter:
             raise ValueError("CAN MDF codec cannot record another protocol.")
         msg = deepcopy(event.payload)
         msg.timestamp = event.timestamp
+        source = getattr(event.payload, 'timestamp_source', 'unspecified')
+        self.timestamp_sources[source] = self.timestamp_sources.get(source, 0)+1
+        if event.direction == 'tx':
+            evidence = getattr(event.payload, 'tx_confirmation', 'unspecified')
+            self.tx_evidence[evidence] = self.tx_evidence.get(evidence, 0)+1
         key = str(event.channel)
         if event.channel is None and self.channel_map:
             key = next(iter(self.channel_map))
@@ -66,6 +73,8 @@ class CANEventWriter:
 
     def finish(self, metadata):
         metadata['channels'] = self.channel_details
+        metadata['timestamp_source_counts'] = self.timestamp_sources
+        metadata['tx_evidence_counts'] = self.tx_evidence
         metadata['bus_channel'] = self.channel_details[0]['bus_channel'] if len(self.channel_details) == 1 else None
         self.writer._mdf.attach(json.dumps(metadata, indent=2).encode(),
                                 file_name="SignalExplorer-session.json", mime="application/json")

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
-import time
+import math
 from copy import copy
 from threading import RLock
 
@@ -13,10 +13,12 @@ from signal_explorer.bus.discovery import prepare_vector_library
 from signal_explorer.bus.canfd import fd_configuration, validate_frame
 from signal_explorer.bus.ownership import DeviceLease
 from signal_explorer.bus.demo import demo_frames, demo_reply
-from signal_explorer.bus.timestamps import HardwareClock
+from signal_explorer.bus.timestamps import HardwareClock, SessionClock
 from signal_explorer.bus.multichannel import native_channel, open_channels
 from signal_explorer.bus.display_queue import DisplayQueue
 from signal_explorer.bus.frames import snapshot_message
+
+TX_REPORT_INTERFACES = frozenset({'vector', 'neovi', 'kvaser', 'pcan', 'nixnet'})
 
 
 class _Reader(QThread):
@@ -60,6 +62,9 @@ class BusService(QObject):
         self.tx_channel = None
         self.fd_enabled = False
         self._rx_clock = None
+        self._clock = SessionClock()
+        self._interface = None
+        self.driver_tx_reports = False
         self._demo_bus: can.BusABC | None = None
         self._reader: _Reader | None = None
         self._demo_timer = QTimer(self)
@@ -84,6 +89,7 @@ class BusService(QObject):
         device_config: dict | None = None,
         fd: bool = False,
         data_bitrate: int = 2000000,
+        driver_tx_reports: bool = False,
     ) -> None:
         if self._bus is not None:
             self.disconnect_bus()
@@ -98,7 +104,12 @@ class BusService(QObject):
             for key in ("channel", "serial", "channel_index", "app_name"):
                 if key in device_config:
                     kwargs[key] = device_config[key]
-        kwargs["receive_own_messages"] = False
+        if driver_tx_reports and backend.interface not in TX_REPORT_INTERFACES:
+            self.error.emit('Driver TX reports are not supported by this backend. Disable that option.')
+            return
+        kwargs["receive_own_messages"] = driver_tx_reports
+        if driver_tx_reports and backend.interface == 'kvaser':
+            kwargs['single_handle'] = False
         if backend.interface == "nixnet":
             kwargs["can_termination"] = bool((device_config or {}).get("can_termination", False))
         kwargs["ignore_config"] = True
@@ -134,7 +145,8 @@ class BusService(QObject):
             if self._device_lease:
                 self._device_lease.release()
                 self._device_lease = None
-            hint = (' Check the nixnet Python extra, the 64-bit NI-XNET driver, '
+            hint = (' Driver TX reports require compatible drivers. Disable that option to use local TX estimates.'
+                    if driver_tx_reports else '') + (' Check the nixnet Python extra, the 64-bit NI-XNET driver, '
                     'and the exact CAN interface name in NI MAX; close other bus sessions.'
                     if backend.interface == 'nixnet' else '')
             self.error.emit(f"Connect failed ({backend.label}): {exc}{hint}")
@@ -142,7 +154,10 @@ class BusService(QObject):
 
         self.fd_enabled = fd
         self._display.reset()
-        self._rx_clock = HardwareClock() if backend.interface == 'neovi' else None
+        self._clock = SessionClock()
+        self._interface = backend.interface
+        self.driver_tx_reports = driver_tx_reports
+        self._rx_clock = HardwareClock(self._clock.now) if backend.interface == 'neovi' else None
         self._channel = primary_channel
         self.channels = [dict(native_channel=native_channel(backend.interface, cfg['channel']),
                               label=cfg.get('channel_label', str(cfg['channel'])),
@@ -156,13 +171,21 @@ class BusService(QObject):
                                  data_bitrate=data_bitrate if fd else None,
                                  serial=(device_config or {}).get("serial"))
         self.session_info['channels'] = self.channels
+        self.session_info.update(
+            driver_tx_reports=driver_tx_reports,
+            host_clock='Unix epoch anchored once to monotonic time for this connection',
+            tx_semantics=('Driver TX reports only; no synthetic TX echo; not intended-ECU delivery proof'
+                          if driver_tx_reports else 'Local send accepted; host estimate, not a bus acknowledgement'),
+            rx_timestamp_source=('Shared device clock anchored at first RX/TX event' if self._rx_clock else
+                                 'Host receipt estimate' if backend.interface in {'virtual', 'slcan'} else
+                                 'Driver epoch timestamp, calibrated by python-can'))
         if backend.interface == "nixnet":
             self.session_info["can_termination"] = kwargs["can_termination"]
             self.session_info["serial"] = (device_config or {}).get("device_serial")
             for key in ("device_model", "physical_port"):
                 self.session_info[key] = (device_config or {}).get(key)
         if self._rx_clock is not None:
-            self.session_info['timestamp_source'] = 'Hardware intervals anchored to host time at first RX'
+            self.session_info['timestamp_source'] = 'Hardware RX/TX intervals anchored to monotonic host epoch at first event'
         self._reader = _Reader(self._bus, self._capture_received)
         self._reader.failed.connect(self._on_reader_failed)
         self._reader.start()
@@ -180,7 +203,8 @@ class BusService(QObject):
             except Exception as exc:  # noqa: BLE001
                 self.error.emit(f"Demo injector failed: {exc}")
 
-        self.connected.emit(f"{backend.label} · " + ', '.join(c['label'] for c in self.channels))
+        self.connected.emit(f"{backend.label} · " + ', '.join(c['label'] for c in self.channels)
+                            + (' · TX: driver reports' if driver_tx_reports else ' · TX: local estimates'))
         self._display_timer.start()
 
     def select_tx_channel(self, channel):
@@ -210,10 +234,26 @@ class BusService(QObject):
                     self.message.emit(frame)
 
     def _capture_received(self, msg):
+        # In fallback mode the local echo is the sole TX observation. Some
+        # drivers expose other clients' local echoes despite their setting.
+        if not msg.is_rx and not self.driver_tx_reports:
+            return None
         epoch = self._display.epoch
         captured = snapshot_message(msg)
+        captured.raw_timestamp = msg.timestamp
         if self._rx_clock is not None:
             captured.timestamp = self._rx_clock.to_unix(msg.timestamp)
+            captured.timestamp_source = 'device clock anchored to monotonic host epoch'
+        elif self._interface in {'virtual', 'slcan'}:
+            captured.timestamp = self._clock.now()
+            captured.timestamp_source = 'monotonic host receive estimate'
+        elif not isinstance(msg.timestamp, (int, float)) or not math.isfinite(msg.timestamp) or msg.timestamp <= 0:
+            captured.timestamp = self._clock.now()
+            captured.timestamp_source = 'host receive estimate (invalid driver timestamp)'
+        else:
+            captured.timestamp_source = 'driver epoch timestamp'
+        if not captured.is_rx:
+            captured.tx_confirmation = 'driver report (not intended-ECU delivery proof)'
         if captured.channel is None or len(self.channels) == 1:
             captured.channel = self._channel
         self.traffic.emit(captured)
@@ -237,8 +277,16 @@ class BusService(QObject):
                 if report_errors:
                     self.error.emit(f"Send failed: {exc}")
                 return False
+            accepted_at = self._clock.now()
+            if self.driver_tx_reports:
+                # recv() publishes the driver's later timestamp exactly once.
+                # Never synthesize a confirmation when that report is absent.
+                return accepted_at if return_timestamp else True
             echo = copy(outgoing)
-            echo.timestamp = time.time()
+            echo.timestamp = accepted_at
+            echo.timestamp_source = 'monotonic host TX acceptance estimate'
+            echo.raw_timestamp = None
+            echo.tx_confirmation = 'local acceptance only'
             echo.is_rx = False
             echo.channel = outgoing.channel
             epoch = self._display.epoch

@@ -33,6 +33,7 @@ from signal_explorer.bus.backends import (
     preferred_slcan_port,
 )
 from signal_explorer.bus.service import BusService
+from signal_explorer.bus.service import TX_REPORT_INTERFACES
 from signal_explorer.bus.canfd import FD_INTERFACES, DATA_BITRATES, validate_frame
 from signal_explorer.ui.trace_model import SignalTreeModel, IdFilter
 from signal_explorer.ui.signal_tree_view import SignalTreeView
@@ -123,6 +124,10 @@ class MainWindow(QMainWindow):
         self._bitrate.setCurrentIndex(2)  # 500 k
 
         self._fd = QCheckBox("CAN FD")
+        self._driver_tx_reports = QCheckBox('Use driver TX reports')
+        self._driver_tx_reports.setToolTip('Use driver-reported TX events/timestamps instead of synthetic host echoes. '
+                                          'Requires compatible drivers. A report is not proof of intended-ECU receipt. '
+                                          'Send still returns local acceptance time; wait for direction="tx" in scripts for the report.')
         self._termination = QCheckBox("NI internal termination (120 ohm)")
         self._termination.setToolTip("Enable only when this NI port is at a bus end and needs termination. Default: off.")
         self._channel.currentIndexChanged.connect(self._sync_ni_controls)
@@ -193,6 +198,7 @@ class MainWindow(QMainWindow):
         fd_bar.addWidget(QLabel("Data bitrate (FD)"))
         fd_bar.addWidget(self._data_bitrate)
         fd_bar.addWidget(self._termination)
+        fd_bar.addWidget(self._driver_tx_reports)
         fd_bar.addWidget(QLabel("Bitrate above is the arbitration rate. Virtual mode simulates frames, not physical bus timing."))
         fd_bar.addStretch()
         root.addLayout(fd_bar)
@@ -486,9 +492,11 @@ class MainWindow(QMainWindow):
                     c['can_termination'] = self._termination.isChecked()
             config = dict(configs[0], channels=configs)
         self._service.connect_bus(spec, channel, bitrate, inject, device_config=config,
-                                  fd=self._fd.isChecked(), data_bitrate=int(self._data_bitrate.currentData()))
+                                  fd=self._fd.isChecked(), data_bitrate=int(self._data_bitrate.currentData()),
+                                  driver_tx_reports=self._driver_tx_reports.isChecked())
 
     def _on_connected(self, label: str) -> None:
+        self._driver_tx_reports.setChecked(self._service.driver_tx_reports)
         self._display_drop_base = 0
         selected = self._channel.currentData()
         option = next((o for o in self._channel_options if o.config == selected), None)
@@ -689,6 +697,10 @@ class MainWindow(QMainWindow):
         panel = getattr(self, "_recording_panel", None)
         running = self._tx_timer.isActive() or (panel is not None and panel.playback_busy)
         supported = self._current_backend().interface in FD_INTERFACES
+        reports_supported = self._current_backend().interface in TX_REPORT_INTERFACES
+        if not connected and not reports_supported:
+            self._driver_tx_reports.setChecked(False)
+        self._driver_tx_reports.setEnabled(not connected and reports_supported)
         self._fd.setEnabled(not connected and supported)
         self._data_bitrate.setEnabled(not connected and supported and self._fd.isChecked())
         enabled = connected and self._service.fd_enabled

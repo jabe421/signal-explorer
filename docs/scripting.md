@@ -135,6 +135,8 @@ se.sleep(100)
 `CanFrame` provides `arbitration_id`, immutable `data` bytes, `timestamp`, `channel`,
 `direction`, `is_extended_id`, `is_fd`, `bitrate_switch`, `is_error_frame` and
 `is_remote_frame`. `CanFrame.channel` is the native identifier as a string.
+Frames also expose `timestamp_source`, `raw_timestamp` (the python-can value
+before application normalization) and `tx_confirmation` for timing evidence.
 The optional send/recv `channel` accepts an enabled label (e.g. `"CAN1"`) or
 native ID. Omitted send channel uses the current main TX destination; omitted
 receive channel accepts any enabled port. Scripts select among already enabled
@@ -198,11 +200,39 @@ se.check(se.can.stats()["dropped"] == before, "No buffer loss during test")
 ```
 
 Measure periods using frame timestamps, rather than `recv()` return times. The
-send result is exactly the host timestamp of the local TX observation used by
-the monitor/logger; it is not hardware wire time, an ACK, or peer receipt. Mixed
+send result is the host acceptance timestamp. With driver TX reports disabled,
+it is also the local TX observation timestamp in the monitor/logger. With
+**Use driver TX reports** enabled, no synthetic TX is published: receive a
+driver TX event separately using `recv(direction="tx", ...)` for its timestamp.
+Allow TX in script filters and correlate channel/ID/payload/transaction; other
+local clients may contribute reports. A report is not intended-ECU receipt. Mixed
 hardware/host clocks and driver latency limit TX-to-RX measurements; check frame
 correlation, clock alignment and loss before asserting timing. Pause and source
 line delay continue to affect script execution.
+
+See [timestamps.md](timestamps.md) for backend capabilities, clock policies and
+recording diagnostics. For a compatible physical adapter, with driver reports
+enabled before connecting:
+
+```python
+# Replace IDs and payload with the ECU's documented test contract.
+# Retained RX history lets us wait for the TX report before the response.
+se.can.set_filters(None)  # Include TX reports as well as RX.
+se.can.flush()
+payload = bytes(range(8))
+accepted_at = se.can.send(0x321, payload, channel="CAN1")
+tx = se.can.recv(1.0, arbitration_id=0x321, extended=False,
+                 direction="tx", channel="CAN1")
+se.check(tx is not None, "Driver TX event observed")
+se.check(tx.data == payload, "TX payload matches")
+reply = se.can.recv(2.0, arbitration_id=0x221, channel="CAN1")
+se.check(reply is not None, "ECU response observed")
+se.log(f"Driver RX minus TX: {reply.timestamp - tx.timestamp:.6f} s")
+se.log(f"TX evidence: {tx.tx_confirmation}; host acceptance: {accepted_at}")
+```
+
+This example is not a unique per-send acknowledgement tracker. Validate the ECU
+response's payload/transaction and buffer-loss counters for a real timing test.
 
 The worker now uses condition notifications for RPC/control waits. A pending
 receive uses a compiled matcher and a coalesced notification for matching new

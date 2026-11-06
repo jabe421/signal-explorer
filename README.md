@@ -206,8 +206,10 @@ Clear resets the display and frame count.
   100 milliseconds. The **Send** button becomes **Stop** during repetition; click it again to stop. Fields are locked while sending;
   stop to edit them. Disconnect, closing the app, or a send error also stops
   repetition. Reconnecting never restarts it automatically. Intervals use a
-  desktop timer and are approximate, not guaranteed real-time timing. TX means the adapter accepted the local
-  send, not that another CAN node received or acknowledged it.
+  desktop timer and are approximate, not guaranteed real-time timing. By default TX is a host acceptance estimate. Optional **Use driver TX reports**
+  selects driver-observed events for Vector, Intrepid, Kvaser, PCAN and NI-XNET.
+  Reports do not prove intended-ECU receipt. Hover Timestamp/Direction for evidence;
+  see [CAN timestamps](docs/timestamps.md) for capabilities and clock limits.
 - **ID filter:** enter hex IDs/ranges such as `100, 200-2FF`, then Apply filter
   or Enter. Blank shows all IDs. Filtering only affects the display; hidden
   messages keep updating. Invalid expressions leave the previous filter active.

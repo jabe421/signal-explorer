@@ -145,6 +145,9 @@ class CanFrame:
     bitrate_switch: bool = False
     is_error_frame: bool = False
     is_remote_frame: bool = False
+    timestamp_source: str = 'unspecified'
+    raw_timestamp: float | None = None
+    tx_confirmation: str = 'none'
 
 
 class CanClient:

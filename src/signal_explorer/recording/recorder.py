@@ -1,6 +1,7 @@
 """Raw MDF 4.10 bus logging using python-can/asammdf, off the GUI thread."""
 from dataclasses import replace
 import math
+import heapq
 import os
 from pathlib import Path
 from queue import Empty, Full, Queue
@@ -11,6 +12,7 @@ import time
 
 from PySide6.QtCore import QObject, Signal
 from signal_explorer.recording.codecs import BusEvent, CANCodec, RecordingCodec
+from signal_explorer.bus.timestamps import SessionClock
 
 
 class MF4Recorder(QObject):
@@ -92,33 +94,72 @@ class MF4Recorder(QObject):
         writer = None
         finalized = False
         corrections = 0
+        reasons = {'invalid': 0, 'late_out_of_order': 0}
+        samples = []
+        reordered = 0
+        window = .05
+        held = []
+        max_seen = last_timestamp = 0.0
+        sequence = 0
+        clock = SessionClock()
+
+        def corrected(msg, value, reason):
+            nonlocal corrections
+            corrections += 1
+            reasons[reason] += 1
+            if len(samples) < 100:
+                original = msg.timestamp
+                if not isinstance(original, (int, float)) or not math.isfinite(original):
+                    original = repr(original)
+                native = getattr(msg.payload, 'raw_timestamp', None)
+                if native is not None and (not isinstance(native, (int, float)) or not math.isfinite(native)):
+                    native = repr(native)
+                samples.append(dict(frame=self.count+len(held)+1, original=original, corrected=value,
+                                    native_timestamp=native,
+                                    channel=str(msg.channel), direction=msg.direction, reason=reason))
+            return replace(msg, timestamp=value)
+
+        def write_next():
+            nonlocal last_timestamp, last_progress
+            _, _, msg = heapq.heappop(held)
+            if msg.timestamp < last_timestamp:
+                msg = corrected(msg, last_timestamp, 'late_out_of_order')
+            last_timestamp = msg.timestamp
+            writer.write(msg)
+            self.count += 1
+            if time.monotonic()-last_progress > .1:
+                self.changed.emit()
+                last_progress = time.monotonic()
+
         try:
             writer = self.codec.writer(path, database)
             if hasattr(writer, 'configure_channels'):
                 writer.configure_channels(metadata.get('channels', []))
-            last_timestamp = 0.0
             last_progress = time.monotonic()
             while not self._stopping.is_set() or not self._queue.empty():
                 try:
                     msg = self._queue.get(timeout=0.05)
                 except Empty:
+                    while held:
+                        write_next()
                     continue
                 try:
                     valid_timestamp = math.isfinite(msg.timestamp) and msg.timestamp > 0
                 except (TypeError, ValueError):
                     valid_timestamp = False
                 if not valid_timestamp:
-                    msg = replace(msg, timestamp=max(last_timestamp, time.time()))
-                    corrections += 1
-                elif msg.timestamp < last_timestamp:
-                    msg = replace(msg, timestamp=last_timestamp)
-                    corrections += 1
-                last_timestamp = msg.timestamp
-                writer.write(msg)
-                self.count += 1
-                if time.monotonic() - last_progress > 0.1:
-                    self.changed.emit()
-                    last_progress = time.monotonic()
+                    msg = corrected(msg, max(max_seen, last_timestamp, clock.now()), 'invalid')
+                elif msg.timestamp < max(max_seen-window, last_timestamp):
+                    msg = corrected(msg, max(max_seen, last_timestamp), 'late_out_of_order')
+                elif msg.timestamp < max_seen:
+                    reordered += 1
+                max_seen = max(max_seen, msg.timestamp)
+                heapq.heappush(held, (msg.timestamp, sequence, msg))
+                sequence += 1
+                while held and (held[0][0] <= max_seen-window or len(held) >= min(8192, self.queue_size)):
+                    write_next()
+            while held:
+                write_next()
         except Exception as exc:
             self.problem = f"Logging failed: {exc}. The recording may be incomplete."
         finally:
@@ -130,7 +171,12 @@ class MF4Recorder(QObject):
                     metadata.update(format="ASAM MDF 4.10 bus logging", protocol=self.codec.protocol, bus_channel=1,
                                     timestamp_corrections=corrections, recorded_frames=self.count,
                                     incomplete_reason=self.problem,
-                                    tx_semantics="Local send accepted by adapter; not a delivery acknowledgement")
+                                    timestamp_reorder_window_seconds=window,
+                                    timestamp_reordered_frames=reordered,
+                                    timestamp_correction_reasons=reasons,
+                                    timestamp_correction_samples=samples,
+                                    timestamp_correction_samples_truncated=corrections > len(samples))
+                    metadata.setdefault('tx_semantics', 'Local send accepted by adapter; not a delivery acknowledgement')
                     writer.finish(metadata)
                     finalized = True
                 except Exception as exc:
