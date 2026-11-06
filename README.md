@@ -1,5 +1,10 @@
 # Signal Explorer
 
+**CAN Bus Health:** open **Analysis > CAN Bus Health...** for per-channel load
+estimates, available driver counters/state, error observations and separate
+capture-loss information. The independent window keeps the main trace clear.
+See [Bus Health](docs/bus-health.md) for measurement sources and limitations.
+
 **Listen-only and advanced timing:** select Listen-only before a supported CAN
 connection. Open **Timing > CAN timing and bitrate detection...** for custom
 rates, sample point/SJW and passive Classic CAN detection in a separate window.

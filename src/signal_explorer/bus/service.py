@@ -20,6 +20,8 @@ from signal_explorer.bus.frames import snapshot_message
 from signal_explorer.bus.listen_only import open_bus
 from signal_explorer.bus.timing import TimingSettings, SILENT_INTERFACES
 from signal_explorer.bus.tx_dispatch import TxDispatcher, TxFailure, send_failure
+from signal_explorer.bus.health import BusHealth
+from signal_explorer.bus.health_native import query_health, install_vector_events
 
 _DRIVER_TASKS = set()  # Keep outstanding native calls alive until Qt receives completion.
 
@@ -103,6 +105,11 @@ class BusService(QObject):
         self._display_timer = QTimer(self)
         self._display_timer.setInterval(40)
         self._display_timer.timeout.connect(self._flush_display)
+        self.health = BusHealth()
+        self._health_pending = {}
+        self._health_timer = QTimer(self)
+        self._health_timer.setInterval(1000)
+        self._health_timer.timeout.connect(self._poll_health)
 
     @property
     def is_connected(self) -> bool:
@@ -315,6 +322,10 @@ class BusService(QObject):
                 self.session_info[key] = (device_config or {}).get(key)
         if self._rx_clock is not None:
             self.session_info['timestamp_source'] = 'Hardware RX/TX intervals anchored to monotonic host epoch at first event'
+        self.health.start(self.channels, self.session_info)
+        if backend.interface == 'vector':
+            install_vector_events(self._bus, self.health, self.health.generation)
+        self._health_timer.start()
         self._reader = _Reader(self._bus, self._capture_received)
         self._reader.failed.connect(self._on_reader_failed)
         self._reader.start()
@@ -386,6 +397,7 @@ class BusService(QObject):
             captured.tx_confirmation = 'driver report (not intended-ECU delivery proof)'
         if captured.channel is None or len(self.channels) == 1:
             captured.channel = self._channel
+        self.health.observe(captured)
         self.traffic.emit(captured)
         self._display.put(captured, epoch)
         return captured
@@ -445,10 +457,12 @@ class BusService(QObject):
                 echo.is_rx = False
                 epoch = self._display.epoch
                 self.traffic.emit(echo)
+                self.health.observe(echo)
                 self._display.put(echo, epoch, legacy=False)
                 self.message.emit(echo)
                 return echo.timestamp if return_timestamp else True
         except Exception as exc:
+            self.health.send_failed(msg.channel if msg.channel is not None else self.tx_channel, str(exc))
             failure = send_failure(exc, self._interface)
             if raise_on_error: raise failure from exc
             if report_errors: self.error.emit(f'Send failed: {failure}')
@@ -460,6 +474,9 @@ class BusService(QObject):
         self.about_to_disconnect.emit()
         self._demo_timer.stop()
         self._display_timer.stop()
+        self._health_timer.stop()
+        for future, _ in self._health_pending.values(): future.cancel()
+        self._health_pending.clear()
         if self._dispatcher: self._dispatcher.stop()
         if self._reader: self._reader.requestInterruption()
 
@@ -476,6 +493,7 @@ class BusService(QObject):
                 if self._device_lease: self._device_lease.release()
 
     def _clear_connection(self):
+        self.health.stop()
         self._flush_display(self._display.capacity)
         self._bus = self._demo_bus = self._reader = self._dispatcher = self._device_lease = None
         self._rx_clock = None
@@ -515,8 +533,47 @@ class BusService(QObject):
         if problem: self.error.emit(f'CAN cleanup failed: {problem}')
 
     def _on_reader_failed(self, text: str) -> None:
+        with self.health.lock: self.health.fault = text
         self.error.emit(text)
         self.disconnect_async()
+
+    def health_snapshot(self):
+        result = self.health.snapshot()
+        result['display_drops'] = self.ui_dropped
+        return result
+
+    def _poll_health(self):
+        if self.busy or self._bus is None or self._dispatcher is None:
+            return
+        generation = self.health.generation
+        handles = self._bus.buses if hasattr(self._bus, 'buses') else {'shared': self._bus}
+        for key, bus in handles.items():
+            channel = key if key!='shared' else self._channel
+            pending = self._health_pending.get(key)
+            if pending is not None:
+                future, captured_generation = pending
+                if not future.done(): continue  # At most one pending query per handle.
+                self._health_pending.pop(key)
+                if not future.cancelled():
+                    try:
+                        result = future.result()
+                        if result is not None:
+                            values, observed_at = result
+                            if values is not None:
+                                self.health.native_update(channel, values, captured_generation, observed_at=observed_at)
+                    except Exception as exc:
+                        self.health.native_update(channel, dict(state=None, tec=None, rec=None, driver_load=None,
+                            overruns=None, overrun_flag=None, statistics_overruns=None,
+                            source=f'{self._interface} diagnostics unavailable',
+                            note=f'Diagnostic query failed: {exc}'), captured_generation)
+            if self._interface not in {'vector', 'pcan', 'kvaser', 'nixnet'}:
+                continue
+            gate = self._native_gates[str(key)]
+            def query(target=bus, guard=gate, session_bus=self._bus, interface=self._interface):
+                with guard:
+                    if self._closing or self._bus is not session_bus: return None
+                    return query_health(target, interface), self.health.clock()
+            self._health_pending[key] = (self._dispatcher.submit(key, query), generation)
 
     def _send_demo_frame(self) -> None:
         if self._demo_bus is None:

@@ -1,5 +1,18 @@
 # Source build release notes
 
+## November 6, 2026: separate CAN Bus Health window
+
+Add **Analysis > CAN Bus Health...** with per-channel frame-based load ranges,
+rates, RX/TX totals, error observations, send failures and supported native
+controller diagnostics. Show driver load separately from estimates and preserve
+Unavailable/stale values. Separate display/script losses and recorder status.
+Use bounded capture-side metrics and asynchronous read-only native queries;
+trace filtering and display pause do not affect health observations. The main
+trace layout is unchanged, leaving signal graphing as a separate future window.
+See [bus-health.md](bus-health.md) for backend support and measurement limits.
+Validation: 272 tests pass, with native behavior covered by mocks and virtual
+traffic. Physical load/error-state qualification remains in Action Items.xlsx.
+
 ## November 6, 2026: CAN transmit robustness
 
 Move GUI connection setup/cleanup, main sends and script send waits off the UI

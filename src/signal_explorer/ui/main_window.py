@@ -46,6 +46,7 @@ from signal_explorer.ui.script_window import ScriptWindow
 from signal_explorer.ui.log_window import LogWindow
 from signal_explorer.bus.timing import SILENT_INTERFACES, TimingSettings
 from signal_explorer.ui.timing_window import TimingWindow
+from signal_explorer.ui.bus_health_window import BusHealthWindow
 import can
 import cantools
 
@@ -73,6 +74,7 @@ class MainWindow(QMainWindow):
         self._dbc_windows = []
         self._transmit_window = None
         self._timing_window = None
+        self._bus_health_window = None
         self._timing_scan_busy = False
         self._timing_settings = {}
 
@@ -111,6 +113,8 @@ class MainWindow(QMainWindow):
         timing_menu = self.menuBar().addMenu('Timing')
         timing_action = timing_menu.addAction('CAN timing and bitrate detection...')
         timing_action.triggered.connect(self._open_timing_window)
+        analysis = self.menuBar().addMenu('Analysis')
+        analysis.addAction('CAN Bus Health...').triggered.connect(self._open_bus_health)
         self._backend = QComboBox()
         for spec in sorted(BACKENDS, key=lambda spec: spec.label.casefold()):
             self._backend.addItem(spec.label, spec.key)
@@ -860,7 +864,19 @@ class MainWindow(QMainWindow):
         self._counts_timer.stop()
         if self._timing_window is not None:
             self._timing_window.close()
+        if self._bus_health_window is not None:
+            self._bus_health_window.close()
         super().closeEvent(event)
+
+    def _open_bus_health(self):
+        if self._bus_health_window is None:
+            def losses():
+                recorder = self._recording_panel.recorder
+                return dict(script_drops=self._script_controller._events.stats()['dropped'],
+                            recorder=recorder.problem or ('Recording' if recorder.recording else 'Idle / no overflow reported'))
+            self._bus_health_window = BusHealthWindow(self._service, losses, self)
+        self._bus_health_window.show(); self._bus_health_window.raise_(); self._bus_health_window.activateWindow()
+        return self._bus_health_window
 
     def _timing_context(self):
         from signal_explorer.bus.service import _typed_channel
