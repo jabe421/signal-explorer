@@ -56,7 +56,7 @@ class MainWindow(QMainWindow):
         self._service = BusService(self)
         self._service.connected.connect(self._on_connected)
         self._service.disconnected.connect(self._on_disconnected)
-        self._service.message.connect(self._on_message)
+        self._service.messages.connect(self._on_messages)
         self._service.error.connect(self._on_error)
         self._script_transport = CanScriptTransport(self._service, self)
         self._script_controller = ScriptController(self._script_transport, self)
@@ -72,6 +72,13 @@ class MainWindow(QMainWindow):
         self._tx_timer.timeout.connect(self._send_repeated_message)
         self._adapter_preference = AdapterPreference("can")
         self._build()
+        self._counts_dirty = False
+        self._display_drop_base = 0
+        self._display_drops_seen = 0
+        self._counts_timer = QTimer(self)
+        self._counts_timer.setInterval(100)
+        self._counts_timer.timeout.connect(self._refresh_counts)
+        self._counts_timer.start()
         self._backend.blockSignals(True)
         index = self._backend.findData(self._adapter_preference.load())
         self._backend.setCurrentIndex(index if index >= 0 else self._backend.findData("virtual"))
@@ -482,6 +489,7 @@ class MainWindow(QMainWindow):
                                   fd=self._fd.isChecked(), data_bitrate=int(self._data_bitrate.currentData()))
 
     def _on_connected(self, label: str) -> None:
+        self._display_drop_base = 0
         selected = self._channel.currentData()
         option = next((o for o in self._channel_options if o.config == selected), None)
         if option:
@@ -527,15 +535,19 @@ class MainWindow(QMainWindow):
         self._status.setText("Disconnected")
 
     def _on_message(self, msg) -> None:
-        if not self._exploring:
+        # Compatibility for explicit single-frame UI callers; service delivery
+        # uses owned snapshots through _on_messages.
+        self._on_messages([msg], owned=False)
+
+    def _on_messages(self, messages, owned=True) -> None:
+        if not self._exploring or not messages:
             return
-        self._model.append_message(msg)
-        self._frame_count += 1
-        if msg.is_rx:
-            self._rx_count += 1
-        else:
-            self._tx_count += 1
-        self._update_counts()
+        self._model.append_messages(messages, owned=owned)
+        self._frame_count += len(messages)
+        received = sum(msg.is_rx for msg in messages)
+        self._rx_count += received
+        self._tx_count += len(messages) - received
+        self._counts_dirty = True
         if self._auto_scroll.isChecked():
             self._table.scrollToBottom()
 
@@ -547,6 +559,7 @@ class MainWindow(QMainWindow):
 
     def _toggle_exploring(self):
         if self._service.is_connected:
+            self._service.advance_display_epoch()
             self._set_exploring(not self._exploring)
 
     def _toggle_trace_mode(self, checked):
@@ -562,16 +575,26 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Vector library saved", "Restart Signal Explorer to load this Vector XL library.")
 
     def _clear_trace(self):
+        self._service.advance_display_epoch()
         self._model.clear()
         self._frame_count = 0
         self._rx_count = 0
         self._tx_count = 0
+        self._display_drop_base = self._service.ui_dropped
         self._update_counts()
 
+    def _refresh_counts(self):
+        if self._counts_dirty or self._display_drops_seen != self._service.ui_dropped:
+            self._update_counts()
+
     def _update_counts(self):
+        self._counts_dirty = False
+        self._display_drops_seen = self._service.ui_dropped
+        dropped = max(0, self._display_drops_seen - getattr(self, '_display_drop_base', 0))
+        drops = f' | Display drops {dropped}' if dropped else ''
         filtered = " | ID filter active" if self._proxy.ranges else ""
         self._count.setText(f"RX {self._rx_count} | TX {self._tx_count} | {self._proxy.rowCount()} visible rows{filtered}"
-                            f" | {'Exploring' if self._exploring else 'Monitoring stopped'}")
+                            f" | {'Exploring' if self._exploring else 'Monitoring stopped'}{drops}")
 
     def _clear_filter(self):
         self._filter.clear()
@@ -729,4 +752,5 @@ class MainWindow(QMainWindow):
         self._service.disconnect_bus()
         self._lin.service.disconnect_bus()
         self._ethernet.service.disconnect_bus()
+        self._counts_timer.stop()
         super().closeEvent(event)

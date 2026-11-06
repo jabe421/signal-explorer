@@ -185,6 +185,12 @@ Add a new adapter by extending `BACKENDS` in `src/signal_explorer/bus/backends.p
 
 ## Live monitor and transmit
 
+CAN/CAN FD trace updates are batched for busy buses. If the display queue
+overflows, **Display drops** reports the discarded display observations; logging
+and script capture use independent paths. See
+[CAN monitor performance](docs/can-monitor-performance.md) for queue limits,
+decode caching and the repeatable model benchmark.
+
 The CAN monitor defaults to **Auto-scroll (all messages)** unchecked, displaying
 one fixed row per channel, CAN ID and standard/extended format while updating
 data, timestamp, direction and count. Check it for timestamped history with one

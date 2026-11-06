@@ -1,5 +1,16 @@
 # Source build release notes
 
+## November 5, 2026: CAN monitor performance
+
+Batch CAN/CAN FD display updates every 40 ms with a bounded queue and explicit
+Display drops count. Update row ranges once per batch, scroll once per batch and
+refresh traffic counters at 10 Hz. Raw logging/script observation remains before
+the display queue; pause/resume and Clear discard stale display generations.
+Add constant-time DBC lookup, lazy shared decode caches for summary/child rows,
+constant-time signal-parent lookup and indexed history storage. Copy payloads
+once at capture to protect against reused driver buffers. See
+[can-monitor-performance.md](can-monitor-performance.md) for limits and benchmarks.
+
 ## Windows installer 0.1.0-beta.2
 
 Correct the minimum Windows build from 19041 to 17763 (Windows 10 version 1809),

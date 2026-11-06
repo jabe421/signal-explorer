@@ -126,6 +126,7 @@ class Features(unittest.TestCase):
             window._send_message()
             window._tx_data.setText('AA BB')
             window._send_message()
+            window._service._flush_display()
             self.assertEqual(window._model.rowCount(), 1)
             self.assertEqual(window._model.data(window._model.index(0, 7)), 'AA BB')
             window._clear_trace()

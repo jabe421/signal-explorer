@@ -15,10 +15,11 @@ from signal_explorer.bus.ownership import DeviceLease
 from signal_explorer.bus.demo import demo_frames, demo_reply
 from signal_explorer.bus.timestamps import HardwareClock
 from signal_explorer.bus.multichannel import native_channel, open_channels
+from signal_explorer.bus.display_queue import DisplayQueue
+from signal_explorer.bus.frames import snapshot_message
 
 
 class _Reader(QThread):
-    message = Signal(object)
     failed = Signal(str)
 
     def __init__(self, bus: can.BusABC, capture=None) -> None:
@@ -31,14 +32,10 @@ class _Reader(QThread):
             try:
                 msg = self._bus.recv(timeout=0.1)
                 if msg is not None and self._capture is not None:
-                    captured = self._capture(msg)
-                    if captured is not None:
-                        msg = captured
+                    self._capture(msg)
             except Exception as exc:
                 self.failed.emit(f"Receive failed ({type(exc).__name__}): {exc}")
                 return
-            if msg is not None:
-                self.message.emit(msg)
 
 
 class BusService(QObject):
@@ -47,6 +44,7 @@ class BusService(QObject):
     connected = Signal(str)
     disconnected = Signal()
     message = Signal(object)
+    messages = Signal(object)  # UI-thread batches; frames are owned, read-only snapshots.
     error = Signal(str)
     traffic = Signal(object)  # Thread-safe capture before display queuing/filtering.
     about_to_disconnect = Signal()
@@ -68,6 +66,10 @@ class BusService(QObject):
         self._demo_timer.setInterval(100)
         self._demo_timer.timeout.connect(self._send_demo_frame)
         self._demo_counter = 0
+        self._display = DisplayQueue()
+        self._display_timer = QTimer(self)
+        self._display_timer.setInterval(40)
+        self._display_timer.timeout.connect(self._flush_display)
 
     @property
     def is_connected(self) -> bool:
@@ -139,6 +141,7 @@ class BusService(QObject):
             return
 
         self.fd_enabled = fd
+        self._display.reset()
         self._rx_clock = HardwareClock() if backend.interface == 'neovi' else None
         self._channel = primary_channel
         self.channels = [dict(native_channel=native_channel(backend.interface, cfg['channel']),
@@ -161,7 +164,6 @@ class BusService(QObject):
         if self._rx_clock is not None:
             self.session_info['timestamp_source'] = 'Hardware intervals anchored to host time at first RX'
         self._reader = _Reader(self._bus, self._capture_received)
-        self._reader.message.connect(self._on_received_message)
         self._reader.failed.connect(self._on_reader_failed)
         self._reader.start()
 
@@ -179,6 +181,7 @@ class BusService(QObject):
                 self.error.emit(f"Demo injector failed: {exc}")
 
         self.connected.emit(f"{backend.label} · " + ', '.join(c['label'] for c in self.channels))
+        self._display_timer.start()
 
     def select_tx_channel(self, channel):
         selected = next((c for c in self.channels if str(channel) in (str(c['native_channel']), c['label'])), None)
@@ -186,19 +189,35 @@ class BusService(QObject):
             raise ValueError('TX channel is not enabled.')
         self.tx_channel = selected['native_channel']
 
-    def _on_received_message(self, msg):
-        if msg.channel is None:
-            msg = copy(msg)
-            msg.channel = self._channel
-        self.message.emit(msg)
+    @property
+    def ui_dropped(self):
+        return self._display.dropped
+
+    def advance_display_epoch(self):
+        self._display.advance_epoch()
+
+    def _flush_display(self, limit=2000):
+        epoch, pending = self._display.drain(limit)
+        frames = [frame for captured_epoch, frame, _ in pending if captured_epoch == epoch]
+        if frames:
+            self.messages.emit(frames)
+        # Compatibility for callers observing individual display frames. The
+        # main monitor subscribes only to messages; RX never queues one Qt event
+        # per frame across the reader/UI thread boundary.
+        if self.receivers('2message(PyObject)'):
+            for _, frame, legacy in pending:
+                if legacy:
+                    self.message.emit(frame)
 
     def _capture_received(self, msg):
-        captured = copy(msg)
+        epoch = self._display.epoch
+        captured = snapshot_message(msg)
         if self._rx_clock is not None:
             captured.timestamp = self._rx_clock.to_unix(msg.timestamp)
         if captured.channel is None or len(self.channels) == 1:
             captured.channel = self._channel
         self.traffic.emit(captured)
+        self._display.put(captured, epoch)
         return captured
 
     def send_message(self, msg: can.Message, report_errors=True) -> bool:
@@ -211,18 +230,20 @@ class BusService(QObject):
                 selected = next((c for c in self.channels if str(target) in (str(c['native_channel']), c['label'])), None)
                 if selected is None:
                     raise ValueError('TX channel is not enabled. Select one enabled CAN channel.')
-                outgoing = copy(msg)
+                outgoing = snapshot_message(msg)
                 outgoing.channel = selected['native_channel']
                 self._bus.send(outgoing, timeout=0.2)
             except Exception as exc:
                 if report_errors:
                     self.error.emit(f"Send failed: {exc}")
                 return False
-            echo = copy(msg)
+            echo = copy(outgoing)
             echo.timestamp = time.time()
             echo.is_rx = False
             echo.channel = outgoing.channel
+            epoch = self._display.epoch
             self.traffic.emit(echo)
+            self._display.put(echo, epoch, legacy=False)
         self.message.emit(echo)
         return True
 
@@ -242,6 +263,8 @@ class BusService(QObject):
             self._reader.requestInterruption()
             self._reader.wait(1000)
             self._reader = None
+        self._display_timer.stop()
+        self._flush_display(self._display.capacity)
         self._rx_clock = None
         self.channels = []
         self.tx_channel = None
