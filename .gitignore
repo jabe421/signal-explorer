@@ -16,3 +16,7 @@ build/
 .vscode/
 tmp/
 *.mf4
+
+# Local project action tracker
+/Action Items.xlsx
+/Action Items.xlsx.inspect.ndjson
