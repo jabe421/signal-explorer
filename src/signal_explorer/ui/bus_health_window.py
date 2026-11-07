@@ -1,17 +1,19 @@
 """Independent CAN analysis window; polling only, no per-frame Qt work."""
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QTableWidget, QTableWidgetItem, QHeaderView, QPushButton, QAbstractItemView)
 
 
 class BusHealthWindow(QMainWindow):
+    close_requested = Signal()
+
     HEADERS = ('Channel', 'Observed load est.', 'Driver load', 'Frames/s', 'RX', 'TX',
                'Error frames', 'Native error events', 'Send-call failures', 'Controller state',
                'TEC', 'REC', 'Driver overruns', 'Native update age')
 
-    def __init__(self, service, loss_provider=lambda: {}, parent=None):
-        super().__init__(parent, Qt.WindowType.Window)
+    def __init__(self, service, loss_provider=lambda: {}, parent=None, *, embedded=False):
+        super().__init__(parent, Qt.WindowType.Widget if embedded else Qt.WindowType.Window)
         self.service, self.loss_provider = service, loss_provider
         self.setWindowTitle('Signal Explorer - CAN Bus Health')
         self.resize(1360, 620)
@@ -34,9 +36,14 @@ class BusHealthWindow(QMainWindow):
         row = QHBoxLayout(); layout.addLayout(row)
         reset = QPushButton('Reset observed counts'); reset.clicked.connect(self.reset_counts)
         reset.setToolTip('Reset only application health counts and the rate window. Does not clear hardware counters, trace, script history or logging.')
-        close = QPushButton('Close'); close.clicked.connect(self.close)
+        close = QPushButton('Close')
+        if embedded:
+            close.clicked.connect(self.close_requested)
+        else:
+            close.clicked.connect(self.close)
         row.addWidget(reset); row.addStretch(); row.addWidget(close)
         self._snapshot = None
+        self._paused = False
         self.timer = QTimer(self); self.timer.setInterval(250); self.timer.timeout.connect(self.refresh)
         self.refresh()
 
@@ -44,7 +51,20 @@ class BusHealthWindow(QMainWindow):
     def value(value):
         return 'Unavailable' if value is None else str(value)
 
+    def set_paused(self, paused):
+        if self._paused == paused:
+            return
+        self._paused = paused
+        if paused:
+            self.timer.stop()
+            self.session.setText("Exploring paused | " + self.session.text())
+        elif self.isVisible():
+            self.refresh()
+            self.timer.start()
+
     def refresh(self):
+        if self._paused:
+            return
         snapshot = self._snapshot = self.service.health_snapshot()
         info = snapshot['session']
         if not info:
@@ -110,7 +130,10 @@ class BusHealthWindow(QMainWindow):
         self.service.health.reset_observations(); self.refresh()
 
     def showEvent(self, event):
-        self.refresh(); self.timer.start(); super().showEvent(event)
+        if not self._paused:
+            self.refresh()
+            self.timer.start()
+        super().showEvent(event)
 
-    def closeEvent(self, event):
-        self.timer.stop(); super().closeEvent(event)
+    def hideEvent(self, event):
+        self.timer.stop(); super().hideEvent(event)

@@ -34,4 +34,5 @@ def reject_unexpected_dialogs(monkeypatch):
 def adapter_settings(tmp_path, monkeypatch):
     settings = QSettings(str(tmp_path / 'adapters.ini'), QSettings.Format.IniFormat)
     monkeypatch.setattr('signal_explorer.ui.adapter_preferences.QSettings', lambda: settings)
+    monkeypatch.setattr('signal_explorer.ui.main_window.QSettings', lambda: settings)
     return settings

@@ -44,8 +44,8 @@ class WaveformDialog(QDialog):
 
 
 class TransmitWindow(QMainWindow):
-    def __init__(self, service, database_provider=lambda: None, playback_busy=lambda: False, parent=None):
-        super().__init__(parent, Qt.WindowType.Window)
+    def __init__(self, service, database_provider=lambda: None, playback_busy=lambda: False, parent=None, *, embedded=False):
+        super().__init__(parent, Qt.WindowType.Widget if embedded else Qt.WindowType.Window)
         self.service, self.database_provider, self.playback_busy = service, database_provider, playback_busy
         self.engine = TransmitEngine(service, playback_busy, self)
         self._dirty, self._syncing, self._path = False, False, None
@@ -67,6 +67,7 @@ class TransmitWindow(QMainWindow):
         for label,callback,shortcut in [('Open transmit list...',self.load,QKeySequence.StandardKey.Open),
                                         ('Save transmit list...',self.save,QKeySequence.StandardKey.Save)]:
             action=QAction(label,self);action.triggered.connect(callback);action.setShortcut(shortcut);menu.addAction(action)
+            action.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         self.table=QTableWidget(0,21)
         self.table.setHorizontalHeaderLabels(['Use','Message Name','ID (hex)','Channel','Ext','FD','BRS','DLC','Send','Cyclic','Cycle (ms)',
                                               *[str(i) for i in range(8)],'Sent','Status'])

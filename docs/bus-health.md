@@ -21,7 +21,9 @@ The window is CAN/CAN FD only. It shows each enabled channel independently:
 and recent-rate buckets. It does not clear hardware counters, trace, scripts,
 recordings, device configuration or fault states. Disconnect freezes the last
 session display; reconnect starts fresh observations. Display Clear, ID filters
-and Pause Exploring do not reset or pause health capture.
+and Pause Exploring do not reset or pause health capture. Pause Exploring freezes
+the CAN trace, Signal Graph, and CAN Bus Health display. On resume, Bus Health
+shows current totals, and the trace and graph resume with new frames.
 
 ## Load estimation and limitations
 

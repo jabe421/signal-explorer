@@ -120,19 +120,25 @@ def test_kvaser_native_units_and_status_masks_without_loading_any_driver():
     assert sample['state']=='Bus off' and sample['tec'] is None
 
 
-def test_virtual_health_continues_while_trace_paused_or_filtered_and_reuses_window():
+def test_virtual_health_display_pauses_and_resumes_independently_of_id_filter():
     with patch('signal_explorer.ui.main_window.discover_channels',return_value=([],'')):
         window=MainWindow()
+    window.show()
     service=window._service; peer=can.Bus(interface='virtual',channel='health-ui',ignore_config=True)
     try:
         service.connect_bus(VIRTUAL,'health-ui',500000,False)
         health_window=window._open_bus_health()
         assert health_window is window._open_bus_health()
-        window._set_exploring(False)
+        health_window.refresh()
+        window._toggle_exploring()
+        assert not health_window.timer.isActive()
+        assert health_window.session.text().startswith('Exploring paused')
         window._filter.setText('999');window._apply_filter()
         peer.send(can.Message(arbitration_id=0x321,data=[1]))
         assert wait_for(lambda:service.health_snapshot()['rows'][0]['rx']==1)
         health_window.refresh()
+        assert health_window.table.item(0,4).text()=='0'
+        window._toggle_exploring()
         assert health_window.table.item(0,4).text()=='1'
         assert health_window.table.item(0,10).text()=='Unavailable'
         assert 'SIMULATED' in health_window.session.text()

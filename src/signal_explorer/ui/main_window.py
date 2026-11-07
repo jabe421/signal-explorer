@@ -2,7 +2,7 @@ from __future__ import annotations
 import logging
 import os
 
-from PySide6.QtCore import QSettings, QTimer, Qt
+from PySide6.QtCore import QByteArray, QSettings, QTimer, Qt
 from PySide6.QtGui import QAction, QActionGroup
 from signal_explorer.ui.adapter_preferences import AdapterPreference, CanChannelPreferences, can_channel_key, can_device_key
 from pathlib import Path
@@ -11,6 +11,7 @@ from signal_explorer.ui.can_channels import CanChannelsDialog, device_key, chann
 from PySide6.QtWidgets import (
     QCheckBox,
     QFileDialog,
+    QDockWidget,
     QLineEdit,
     QComboBox,
     QHBoxLayout,
@@ -19,6 +20,8 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QStatusBar,
+    QScrollArea,
+    QFrame,
     QTreeView,
     QVBoxLayout,
     QWidget,
@@ -51,13 +54,43 @@ from signal_explorer.ui.log_window import LogWindow
 from signal_explorer.bus.timing import SILENT_INTERFACES, TimingSettings
 from signal_explorer.ui.timing_window import TimingWindow
 from signal_explorer.ui.bus_health_window import BusHealthWindow
+from signal_explorer.ui.transmit_window import TransmitWindow
+from signal_explorer.ui.signal_graph import SignalGraph
 import can
 import cantools
 
 logger = logging.getLogger(__name__)
 
 
+def _scrollable(content):
+    scroll = QScrollArea()
+    scroll.setFrameShape(QFrame.Shape.NoFrame)
+    scroll.setWidgetResizable(True)
+    scroll.setWidget(content)
+    return scroll
+
+
+class CanToolDock(QDockWidget):
+    def __init__(self, title, content, parent):
+        super().__init__(title, parent)
+        self._content = content
+        self.setWidget(_scrollable(content))
+
+    def closeEvent(self, event):
+        # Preserve the tool's close behavior when using the dock title bar.
+        if self._content.close():
+            super().closeEvent(event)
+        else:
+            event.ignore()
+
+    def showEvent(self, event):
+        self._content.show()
+        super().showEvent(event)
+
+
 class MainWindow(QMainWindow):
+    _CAN_LAYOUT_KEY = "ui/can_tool_layout_with_graph"
+
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("Signal Explorer")
@@ -78,10 +111,8 @@ class MainWindow(QMainWindow):
         self._script_controller = ScriptController(self._script_transport, self)
         self._script_windows = []
         self._dbc_windows = []
-        self._transmit_window = None
         self._timing_window = None
         self._replay_timing_window = None
-        self._bus_health_window = None
         self._diagnostics_window = None
         self._timing_scan_busy = False
         self._timing_settings = {}
@@ -106,6 +137,7 @@ class MainWindow(QMainWindow):
         self._backend.setCurrentIndex(index if index >= 0 else self._backend.findData("virtual"))
         self._backend.blockSignals(False)
         self._apply_backend(self._current_backend())
+        self._build_can_docks()
 
     def _build(self) -> None:
         scripts = self.menuBar().addMenu('File Viewer')
@@ -136,6 +168,7 @@ class MainWindow(QMainWindow):
             action.setStatusTip(f'CAN/CAN FD trace: {explanation}')
             self._timestamp_actions.addAction(action)
         self._timestamp_actions.triggered.connect(lambda action: self._set_timestamp_format(action.data()))
+        self._view_menu = self.menuBar().addMenu('View')
         help_menu = self.menuBar().addMenu('Help')
         help_menu.addAction('Diagnostics...').triggered.connect(self._open_diagnostics)
         self._backend = QComboBox()
@@ -325,7 +358,7 @@ class MainWindow(QMainWindow):
         outer = QWidget(); outer_layout = QVBoxLayout(outer)
         outer_layout.addWidget(self._adapter_stack); outer_layout.addWidget(self._tabs, 1)
         self._tabs.currentChanged.connect(self._protocol_tab_changed)
-        self.setCentralWidget(outer)
+        self.setCentralWidget(_scrollable(outer))
 
         status = QStatusBar()
         self._status = QLabel("Disconnected")
@@ -466,15 +499,81 @@ class MainWindow(QMainWindow):
             self._channel.lineEdit().setCursorPosition(0)
             self._sync_ni_controls()
 
+    def _build_can_docks(self):
+        self._transmit_window = TransmitWindow(
+            self._service, lambda: self._model.database,
+            lambda: self._recording_panel.playback_busy, self, embedded=True,
+        )
+        self._recording_panel.playback_changed.connect(self._transmit_window.playback_changed)
+
+        def losses():
+            recorder = self._recording_panel.recorder
+            return dict(script_drops=self._script_controller._events.stats()['dropped'],
+                        recorder=recorder.problem or ('Recording' if recorder.recording else 'Idle / no overflow reported'))
+
+        self._bus_health_window = BusHealthWindow(self._service, losses, self, embedded=True)
+        self._transmit_dock = self._add_can_dock(
+            "Multi Message Sender", "canSenderDock", self._transmit_window,
+            Qt.DockWidgetArea.BottomDockWidgetArea,
+        )
+        self._bus_health_dock = self._add_can_dock(
+            "CAN Bus Health", "canHealthDock", self._bus_health_window,
+            Qt.DockWidgetArea.RightDockWidgetArea,
+        )
+        self._bus_health_window.close_requested.connect(self._bus_health_dock.close)
+        self._signal_graph = SignalGraph(self)
+        self._signal_graph_dock = self._add_can_dock(
+            "Signal Graph", "canSignalGraphDock", self._signal_graph,
+            Qt.DockWidgetArea.RightDockWidgetArea,
+        )
+        self.tabifyDockWidget(self._bus_health_dock, self._signal_graph_dock)
+
+        def update_sender_title(title):
+            self._transmit_dock.setWindowTitle(title.replace("Send Messages", "Multi Message Sender", 1))
+
+        self._transmit_window.windowTitleChanged.connect(update_sender_title)
+        update_sender_title(self._transmit_window.windowTitle())
+        self._default_can_layout = self.saveState()
+        settings = QSettings()
+        layout = settings.value(self._CAN_LAYOUT_KEY, QByteArray())
+        if isinstance(layout, QByteArray) and not layout.isEmpty():
+            self.restoreState(layout)
+        else:
+            previous = settings.value("ui/can_tool_layout", QByteArray())
+            if isinstance(previous, QByteArray) and not previous.isEmpty():
+                self.restoreState(previous)
+                if not self._bus_health_dock.isFloating():
+                    self.tabifyDockWidget(self._bus_health_dock, self._signal_graph_dock)
+        self._view_menu.addSeparator()
+        self._view_menu.addAction("Reset CAN Tool Layout").triggered.connect(self._reset_can_layout)
+
+    def _add_can_dock(self, title, name, widget, area):
+        dock = CanToolDock(title, widget, self)
+        dock.setObjectName(name)
+        self.addDockWidget(area, dock)
+        dock.hide()
+        action = QAction(title, dock)
+        action.setCheckable(True)
+        dock.visibilityChanged.connect(lambda _: action.setChecked(not dock.isHidden()))
+        action.triggered.connect(lambda checked: self._show_can_dock(dock) if checked else dock.close())
+        self._view_menu.addAction(action)
+        return dock
+
+    def _reset_can_layout(self):
+        for dock in (self._transmit_dock, self._bus_health_dock, self._signal_graph_dock):
+            if not dock.isHidden():
+                dock.close()
+        self.restoreState(self._default_can_layout)
+
+    @staticmethod
+    def _show_can_dock(dock):
+        dock.show()
+        dock.raise_()
+        if dock.isFloating():
+            dock.activateWindow()
+
     def _open_transmit_window(self):
-        if self._transmit_window is None:
-            from signal_explorer.ui.transmit_window import TransmitWindow
-            self._transmit_window = TransmitWindow(self._service, lambda:self._model.database,
-                                                   lambda:self._recording_panel.playback_busy, self)
-            self._recording_panel.playback_changed.connect(self._transmit_window.playback_changed)
-        self._transmit_window.show()
-        self._transmit_window.raise_()
-        self._transmit_window.activateWindow()
+        self._show_can_dock(self._transmit_dock)
         return self._transmit_window
 
     def _select_tx_channel(self, *_):
@@ -557,6 +656,7 @@ class MainWindow(QMainWindow):
 
     def _on_connected(self, label: str) -> None:
         self._model.start_session(self._service.session_started_at)
+        self._signal_graph.set_channels(self._service.channels)
         self._driver_tx_reports.setChecked(self._service.driver_tx_reports)
         self._listen_only.setChecked(self._service.listen_only)
         self._display_drop_base = 0
@@ -629,6 +729,8 @@ class MainWindow(QMainWindow):
     def _on_messages(self, messages, owned=True) -> None:
         if not self._exploring or not messages:
             return
+        if not self._signal_graph_dock.isHidden():
+            self._signal_graph.append_frames(messages)
         self._model.append_messages(messages, owned=owned)
         self._frame_count += len(messages)
         received = sum(msg.is_rx for msg in messages)
@@ -641,6 +743,9 @@ class MainWindow(QMainWindow):
 
     def _set_exploring(self, enabled):
         self._exploring = enabled
+        paused = self._service.is_connected and not enabled
+        self._signal_graph.set_paused(paused)
+        self._bus_health_window.set_paused(paused)
         self._explore.setText("Pause Exploring" if enabled else "Start Exploring")
         self._update_counts()
 
@@ -710,6 +815,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "DBC load failed", str(exc))
             return
         self._model.set_database(database)
+        self._signal_graph.set_database(database)
         self._recording_panel.database_path = path
         self._dbc_label.setText(f"{path.rsplit('/', 1)[-1]} ({len(database.messages)} messages)")
         self._dbc_label.setToolTip(path)
@@ -717,6 +823,7 @@ class MainWindow(QMainWindow):
     def _unload_dbc(self):
         self._recording_panel.database_path = None
         self._model.set_database(None)
+        self._signal_graph.set_database(None)
         self._dbc_label.setText("No DBC loaded")
         self._dbc_label.setToolTip("")
 
@@ -741,6 +848,7 @@ class MainWindow(QMainWindow):
         active = self._recording_panel.database_path
         if active is not None and Path(active).resolve() == Path(path).resolve():
             self._model.set_database(database)
+            self._signal_graph.set_database(database)
             self._recording_panel.database_path = path
             self._dbc_label.setText(f"{Path(path).name} ({len(database.messages)} messages)")
             self._dbc_label.setToolTip(path)
@@ -911,7 +1019,7 @@ class MainWindow(QMainWindow):
             self._timing_window.cancel_scan()
             event.ignore()
             return
-        if self._transmit_window is not None and not self._transmit_window.request_close_for_main():
+        if not self._transmit_window.request_close_for_main():
             event.ignore();return
         for window in list(self._dbc_windows):
             if not window.close():
@@ -926,8 +1034,6 @@ class MainWindow(QMainWindow):
         if not can_ready or not lin_ready or not ethernet_ready:
             event.ignore()
             return
-        if self._transmit_window is not None:
-            self._transmit_window.shutdown()
         if self._service.is_connected and self._service._interface != 'virtual':
             self._close_after_disconnect = True
             self._service.disconnect_async()
@@ -941,18 +1047,12 @@ class MainWindow(QMainWindow):
         self._counts_timer.stop()
         if self._timing_window is not None:
             self._timing_window.close()
-        if self._bus_health_window is not None:
-            self._bus_health_window.close()
+        QSettings().setValue(self._CAN_LAYOUT_KEY, self.saveState())
+        self._transmit_window.shutdown()
         super().closeEvent(event)
 
     def _open_bus_health(self):
-        if self._bus_health_window is None:
-            def losses():
-                recorder = self._recording_panel.recorder
-                return dict(script_drops=self._script_controller._events.stats()['dropped'],
-                            recorder=recorder.problem or ('Recording' if recorder.recording else 'Idle / no overflow reported'))
-            self._bus_health_window = BusHealthWindow(self._service, losses, self)
-        self._bus_health_window.show(); self._bus_health_window.raise_(); self._bus_health_window.activateWindow()
+        self._show_can_dock(self._bus_health_dock)
         return self._bus_health_window
 
     def _timing_context(self):
