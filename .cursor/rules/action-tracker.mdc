@@ -1,0 +1,21 @@
+---
+description: Update the local action tracker and revision history after each completed change set
+alwaysApply: true
+---
+
+# Action tracker maintenance
+
+- After each completed change set to software, packaging, documentation or the
+  tracker, update the local root workbook `Action Items.xlsx` before reporting
+  completion. Read-only discussions do not require a revision.
+- Append one row to `Revision History` with the next RH identifier, date in
+  America/New_York, change-set title, summary, validation, remaining manual
+  checks and commit/reference. Use `Local working tree` until committed.
+- Preserve previous revision entries and all existing workbook features.
+  Update affected Actions rows only when implementation or actual test evidence
+  justifies changing their status, follow-up or evidence.
+- Distinguish automated/mock tests from physical hardware verification. Never
+  mark a hardware test Verified solely because automated tests passed.
+- Keep the workbook excluded from Git, installer bundles and GitHub releases.
+  Do not force-add it or upload it. If it is absent on another checkout or
+  locked, report the pending tracker update instead of silently skipping it.
