@@ -1,5 +1,49 @@
 # CAN timestamps and TX evidence
 
+## Trace timestamp display
+
+Use **Trace > Timestamp format** to change the CAN/CAN FD monitor's first
+column while connected or disconnected. Epoch seconds remains the startup
+default. The selected format stays selected across Clear, trace-mode changes
+and reconnects within the application session.
+
+- **Epoch seconds**: original Unix-epoch seconds, to six decimal places.
+- **Absolute time (UTC)**: UTC date/time with microseconds and a `Z` suffix.
+- **Relative to connection start**: elapsed seconds from the successful CAN
+  connection's host-clock anchor, not from the first received message.
+- **Delta: previous monitored frame**: difference from the previous frame
+  accepted by the monitor, across all enabled CAN channels and before ID filters.
+- **Delta: same channel and message ID**: difference for that channel, ID and
+  standard/extended format. RX and TX participate in the same ID interval.
+
+The first delta, an invalid timestamp or an unrepresentable UTC date displays
+`n/a`. A negative delta remains negative when frames arrive out of timestamp
+order; display selection does not repair timestamps or synchronize clocks.
+Six displayed decimal places do not imply microsecond hardware accuracy.
+
+Both the all-messages history and latest-per-ID view keep timing values
+calculated on arrival. Filtering, switching views, repainting and trimming old
+history do not recalculate interval baselines. During **Pause Exploring**, the
+monitor ignores arriving frames while recording continues. The next displayed
+delta includes the gap since the last monitored frame. Relative time continues
+through pauses and **Clear**. Clear resets delta baselines; reconnect starts new
+relative/delta baselines. Retained rows keep values from their original session.
+
+Formatting is cached per row and invalidated only by a new frame or a format
+change. Selecting a display format does not reconnect the adapter, alter DBC
+signal children, modify captured timestamps, change recorder clock corrections,
+or affect replay timing. `session_started_at` in CAN session metadata records
+the connection anchor used for relative display. LIN/Ethernet trace and logfile
+viewer timestamps are unchanged in this stage.
+
+November 6, 2026 bench verification used VN1630A serial 604069 with CAN1 wired
+to CAN2. Classic CAN at 500 kbit/s and CAN FD at 500 kbit/s / 2 Mbit/s both
+passed all five formats in history and latest-per-ID views, ID filtering and
+MF4 raw-timestamp comparison. This validates the display calculations with that
+loopback setup; it does not establish clock synchronization or timing accuracy
+for other adapters. Automated tests also cover pause, Clear, reconnect, invalid
+timestamps, negative deltas, history trimming and DBC signal children.
+
 ## Choosing TX observations
 
 Before connecting, optionally select **Use driver TX reports** for Vector XL,

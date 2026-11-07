@@ -2,6 +2,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from PySide6.QtCore import QAbstractItemModel, QModelIndex, Qt, QSortFilterProxyModel, Signal
 from signal_explorer.bus.frames import snapshot_message
+from signal_explorer.ui.trace_timestamps import FORMAT_DETAILS, format_timestamp, valid_timestamp
 
 _COLUMNS = ("Timestamp", "Counts", "CAN Channel", "Message ID (hex)", "Ext", "Direction", "DLC", "Data", "DBC Message", "Signals", "FD", "BRS", "ESI")
 
@@ -16,6 +17,11 @@ class _Record:
     summary: str = ''
     values: dict = field(default_factory=dict)
     error: str = ''
+    relative: float | None = None
+    delta: float | None = None
+    delta_id: float | None = None
+    time_revision: int = -1
+    time_text: str = ''
 
 
 class TraceModel(QAbstractItemModel):
@@ -38,6 +44,37 @@ class TraceModel(QAbstractItemModel):
         self._units = {}
         self._revision = 0
         self.channel_labels = {}
+        self.timestamp_mode = 'epoch'
+        self._time_revision = 0
+        self._session_start = self._time_origin = None
+        self._previous_time = None
+        self._previous_by_id = {}
+
+    def start_session(self, timestamp):
+        """Reset interval baselines; retained rows keep their original timings."""
+        if not valid_timestamp(timestamp):
+            raise ValueError('Connection start timestamp must be finite.')
+        self._session_start = self._time_origin = timestamp
+        self._previous_time = None
+        self._previous_by_id.clear()
+
+    def set_timestamp_mode(self, mode):
+        if mode not in FORMAT_DETAILS:
+            raise ValueError('Unknown trace timestamp format.')
+        if mode == self.timestamp_mode:
+            return
+        self.timestamp_mode = mode
+        self._time_revision += 1
+        self.headerDataChanged.emit(Qt.Orientation.Horizontal, 0, 0)
+        if self._rows:
+            self.dataChanged.emit(self.index(0, 0), self.index(len(self._rows)-1, 0))
+
+    def _timestamp_text(self, record):
+        if record.time_revision != self._time_revision:
+            record.time_text = format_timestamp(self.timestamp_mode, record.frame.timestamp,
+                                                record.relative, record.delta, record.delta_id)
+            record.time_revision = self._time_revision
+        return record.time_text
 
     def index(self, row, column, parent=QModelIndex()):
         if parent.isValid() or not 0 <= row < len(self._rows) or not 0 <= column < len(_COLUMNS):
@@ -59,6 +96,11 @@ class TraceModel(QAbstractItemModel):
         return 0 if parent.isValid() else len(_COLUMNS)
 
     def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
+        if orientation == Qt.Orientation.Horizontal and section == 0:
+            if role == Qt.ItemDataRole.ToolTipRole:
+                return FORMAT_DETAILS[self.timestamp_mode][2]
+            if role == Qt.ItemDataRole.DisplayRole:
+                return FORMAT_DETAILS[self.timestamp_mode][1]
         if role == Qt.ItemDataRole.DisplayRole and orientation == Qt.Orientation.Horizontal:
             return _COLUMNS[section]
 
@@ -68,7 +110,9 @@ class TraceModel(QAbstractItemModel):
         record = self._rows[index.row()]
         msg = record.frame
         if role == Qt.ItemDataRole.ToolTipRole and index.column() in (0, 5):
-            return (f"Timestamp: {getattr(msg, 'timestamp_source', 'unspecified')}\n"
+            return (f"Display: {FORMAT_DETAILS[self.timestamp_mode][2]}\n"
+                    f"Original epoch timestamp: {msg.timestamp}\n"
+                    f"Timestamp: {getattr(msg, 'timestamp_source', 'unspecified')}\n"
                     f"Native timestamp: {getattr(msg, 'raw_timestamp', None)}\n"
                     f"TX evidence: {getattr(msg, 'tx_confirmation', 'none')}")
         if role == Qt.ItemDataRole.UserRole:
@@ -76,7 +120,7 @@ class TraceModel(QAbstractItemModel):
         if role != Qt.ItemDataRole.DisplayRole:
             return None
         column = index.column()
-        if column == 0: return f'{msg.timestamp:.6f}'
+        if column == 0: return self._timestamp_text(record)
         if column == 1: return str(record.count)
         if column == 2: return self.channel_labels.get(str(msg.channel), str(msg.channel)) if msg.channel is not None else ''
         if column == 3: return f'{msg.arbitration_id:03X}' + (' (Error Frame)' if msg.is_error_frame else '')
@@ -156,27 +200,39 @@ class TraceModel(QAbstractItemModel):
         for offset, msg in enumerate(messages):
             frame = msg if owned else snapshot_message(msg)
             key = frame.channel, frame.arbitration_id, frame.is_extended_id
+            stamp = frame.timestamp if valid_timestamp(frame.timestamp) else None
+            if self._time_origin is None and stamp is not None:
+                self._time_origin = stamp
+            relative = stamp - self._time_origin if stamp is not None else None
+            previous_id = self._previous_by_id.get(key)
+            delta = stamp - self._previous_time if stamp is not None and self._previous_time is not None else None
+            delta_id = stamp - previous_id if stamp is not None and previous_id is not None else None
+            self._previous_time = stamp
+            self._previous_by_id[key] = stamp
             if key in updates:
                 count = updates[key][1] + 1
             else:
                 previous = self._indices.get(key)
                 count = self._latest[previous].count + 1 if previous is not None else 1
-            updates[key] = frame, count
+            updates[key] = frame, count, relative, delta, delta_id
             if offset >= keep_from:
-                history.append(_Record(frame, count, self._history_next + offset))
+                history.append(_Record(frame, count, self._history_next + offset,
+                                       relative=relative, delta=delta, delta_id=delta_id))
         self._history_next += len(messages)
 
         changed = []
         new = []
-        for key, (frame, count) in updates.items():
+        for key, (frame, count, relative, delta, delta_id) in updates.items():
             row = self._indices.get(key)
             if row is None:
                 row = len(self._latest) + len(new)
-                new.append((key, _Record(frame, count, row)))
+                new.append((key, _Record(frame, count, row, relative=relative, delta=delta, delta_id=delta_id)))
             else:
                 record = self._latest[row]
                 operation = self._before_latest_change(record, frame) if not self.history_mode else None
                 record.frame, record.count, record.revision = frame, count, -1
+                record.relative, record.delta, record.delta_id = relative, delta, delta_id
+                record.time_revision = -1
                 if not self.history_mode:
                     self._after_latest_change(record, operation)
                     changed.append(row)
@@ -216,6 +272,9 @@ class TraceModel(QAbstractItemModel):
         self._latest.clear()
         self._indices.clear()
         self._history_next = self._history_offset = 0
+        self._time_origin = self._session_start
+        self._previous_time = None
+        self._previous_by_id.clear()
         self.endResetModel()
 
 

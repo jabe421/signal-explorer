@@ -9,6 +9,9 @@ from PySide6.QtWidgets import QApplication, QSplashScreen
 
 
 def main() -> int:
+    from signal_explorer.diagnostics import configure_logging, install_exception_hooks
+    configure_logging()
+    install_exception_hooks()
     app = QApplication(sys.argv)
     app.setApplicationName("Signal Explorer")
     app.setOrganizationName("Signal Explorer")

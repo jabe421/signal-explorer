@@ -3,22 +3,22 @@ from copy import copy
 from queue import Queue, Empty, Full
 from threading import Event, Thread
 import can
+import logging
+from signal_explorer.bus.strategies import strategy_for
+
+logger = logging.getLogger(__name__)
 
 
 def native_channel(interface, channel):
-    if interface == 'neovi':
-        from can.interfaces.ics_neovi import NeoViBus
-        return NeoViBus.channel_to_netid(channel)
-    if interface in {'vector', 'kvaser', 'gs_usb'}:
-        return int(channel)
-    return channel
+    return strategy_for(interface).native_channel(channel)
 
 
 def open_channels(factory, interface, configs, kwargs):
     channels = [native_channel(interface, cfg['channel']) for cfg in configs]
     if len(set(map(str, channels))) != len(channels):
         raise ValueError('Each CAN channel may only be enabled once.')
-    if interface in {'vector', 'neovi'}:
+    strategy = strategy_for(interface)
+    if strategy.shared_port:
         serials = {str(cfg.get('serial')) for cfg in configs}
         if len(serials) != 1 or None in [cfg.get('serial') for cfg in configs]:
             raise ValueError('Select channels from one identified physical device.')
@@ -28,9 +28,8 @@ def open_channels(factory, interface, configs, kwargs):
     buses = {}
     try:
         for cfg, channel in zip(configs, channels):
-            args = dict(kwargs, channel=channel)
-            if interface == 'nixnet':
-                args['can_termination'] = bool(cfg.get('can_termination', False))
+            args = strategy.channel_options(kwargs, cfg)
+            args['channel'] = channel
             buses[channel] = factory(**args)
         return ChannelMux(buses)
     except Exception:
@@ -38,7 +37,7 @@ def open_channels(factory, interface, configs, kwargs):
             try:
                 bus.shutdown()
             except Exception:
-                pass
+                logger.exception('Failed to release a partially opened CAN channel')
         raise
 
 
@@ -62,11 +61,12 @@ class ChannelMux:
                     msg.channel = channel
                     self._queue.put_nowait(msg)
         except Exception as exc:
+            logger.exception('Multi-channel receive stopped on channel %s', channel)
             self._stop.set()
             try:
                 self._queue.put_nowait(exc)
             except Full:
-                pass
+                logger.error('Receive failure could not be queued: multi-channel receive queue is full')
 
     def recv(self, timeout=None):
         try:
@@ -94,6 +94,7 @@ class ChannelMux:
             try:
                 bus.shutdown()
             except Exception as exc:
+                logger.exception('CAN channel shutdown failed')
                 failures.append(str(exc))
         if failures:
             raise can.CanOperationError('; '.join(failures))

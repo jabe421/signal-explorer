@@ -1,6 +1,7 @@
 """Qt host for a single script process, independent from editor/protocol UI."""
 from collections import deque
 import json
+import logging
 import math
 from pathlib import Path
 import sys
@@ -254,6 +255,7 @@ class ScriptController(QObject):
                 self.line = event['line']; self.line_changed.emit(self.line)
             elif kind == 'output': self.output.emit(event.get('text', ''))
             elif kind == 'error':
+                logging.getLogger(__name__).error('Script error: %s', event.get('text', 'Script error.'))
                 self.line = event.get('line', 0); self.line_changed.emit(self.line)
                 self.output.emit(event.get('text', 'Script error.'))
             elif kind == 'result': self._result = event
@@ -285,6 +287,10 @@ class ScriptController(QObject):
         self.outcome = ('failed' if self._failure else 'stopped' if was_stopping else
                         result.get('outcome', 'failed'))
         if code != 0 and not was_stopping: self.outcome = 'failed'
+        logging.getLogger(__name__).log(
+            logging.ERROR if self.outcome == 'failed' else logging.INFO,
+            'Script finished: outcome=%s exit_code=%s failure=%s', self.outcome, code,
+            self._failure or result.get('error', ''))
         if not result and not was_stopping and not self._failure:
             self.output.emit(f'Script process exited without a result (exit code {code}).\n')
         self._pending = None; self._deferred.clear()

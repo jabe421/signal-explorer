@@ -1,6 +1,7 @@
 """Raw MDF 4.10 bus logging using python-can/asammdf, off the GUI thread."""
 from dataclasses import replace
 import math
+import logging
 import heapq
 import os
 from pathlib import Path
@@ -14,13 +15,20 @@ from PySide6.QtCore import QObject, Signal
 from signal_explorer.recording.codecs import BusEvent, CANCodec, RecordingCodec
 from signal_explorer.bus.timestamps import SessionClock
 
+logger = logging.getLogger(__name__)
+
 
 class MF4Recorder(QObject):
     changed = Signal()
     finalized = Signal(str, str)  # temporary file, warning/error
 
-    def __init__(self, parent=None, queue_size=100_000, temp_directory=None, codec: RecordingCodec | None = None):
+    def __init__(self, parent=None, queue_size=100_000, temp_directory=None, codec: RecordingCodec | None = None,
+                 overflow_policy='stop'):
         super().__init__(parent)
+        if not isinstance(queue_size, int) or isinstance(queue_size, bool) or queue_size < 1:
+            raise ValueError('Recording queue size must be a positive integer.')
+        if overflow_policy not in ('stop', 'continue'):
+            raise ValueError('Recording overflow policy must be stop or continue.')
         self.codec = codec or CANCodec()
         self.queue_size = queue_size
         self.temp_directory = temp_directory
@@ -30,6 +38,12 @@ class MF4Recorder(QObject):
         self._stopping = Event()
         self._done = Event()
         self._done.set()
+        self._overflow_policy = overflow_policy
+        self.accepted = 0
+        self.dropped = 0
+        self._dropped_rx = self._dropped_tx = self._dropped_other = 0
+        self._first_drop = self._last_drop = None
+        self._last_drop_notice = None
         self.pending_path = None
         self.count = 0
         self.problem = ""
@@ -43,6 +57,27 @@ class MF4Recorder(QObject):
     @property
     def busy(self):
         return not self._done.is_set()
+
+    @property
+    def overflow_policy(self):
+        return self._overflow_policy
+
+    @overflow_policy.setter
+    def overflow_policy(self, policy):
+        if policy not in ('stop', 'continue'):
+            raise ValueError('Recording overflow policy must be stop or continue.')
+        with self._lock:
+            if self.busy:
+                raise RuntimeError('Stop recording before changing its overflow policy.')
+            self._overflow_policy = policy
+
+    def loss_statistics(self):
+        with self._lock:
+            return dict(overflow_policy=self._overflow_policy, accepted_events=self.accepted,
+                        dropped_events=self.dropped,
+                        dropped_rx_events=self._dropped_rx, dropped_tx_events=self._dropped_tx,
+                        dropped_other_events=self._dropped_other,
+                        first_dropped_timestamp=self._first_drop, last_dropped_timestamp=self._last_drop)
 
     def start(self, metadata=None, database=None):
         if self.busy or self.pending_path:
@@ -58,6 +93,10 @@ class MF4Recorder(QObject):
         self.problem = ""
         self.pending_path = None
         with self._lock:
+            self.accepted = self.dropped = 0
+            self._dropped_rx = self._dropped_tx = self._dropped_other = 0
+            self._first_drop = self._last_drop = None
+            self._last_drop_notice = None
             self._accepting = True
         self._thread = Thread(target=self._write, args=(path, dict(metadata or {}), database),
                               name="SignalExplorer-MF4", daemon=False)
@@ -73,16 +112,52 @@ class MF4Recorder(QObject):
 
     def capture(self, msg):
         # Called directly from RX/TX threads; no widgets or disk I/O here.
+        notify = False
         with self._lock:
             if not self._accepting:
                 return
-            try:
-                self._queue.put_nowait(msg if isinstance(msg, BusEvent) else self.codec.capture(msg))
-            except Full:
-                self.problem = "Logging stopped: recording queue overflow. The saved recording is incomplete."
-                self._accepting = False
-                self._stopping.set()
-                self.changed.emit()
+            # All producers hold this lock; only the consumer can free space.
+            # Avoid copying a payload that cannot enter the bounded queue.
+            if self._queue.full():
+                notify = self._drop_event(msg)
+            else:
+                try:
+                    self._queue.put_nowait(msg if isinstance(msg, BusEvent) else self.codec.capture(msg))
+                except Full:
+                    notify = self._drop_event(msg)
+                else:
+                    self.accepted += 1
+        if notify:
+            self.changed.emit()
+
+    def _drop_event(self, msg):
+        """Called under _lock. Never enqueue, log to disk, or block the producer."""
+        self.dropped += 1
+        direction = getattr(msg, 'direction', None)
+        if direction is None and hasattr(msg, 'is_rx'):
+            direction = 'rx' if msg.is_rx else 'tx'
+        if direction == 'rx':
+            self._dropped_rx += 1
+        elif direction == 'tx':
+            self._dropped_tx += 1
+        else:
+            self._dropped_other += 1
+        stamp = msg.timestamp
+        stamp = stamp if isinstance(stamp, (int, float)) and math.isfinite(stamp) else None
+        if self.dropped == 1:
+            self._first_drop = stamp
+        self._last_drop = stamp
+        if self._overflow_policy == 'stop':
+            self.problem = 'Logging stopped: recording queue overflow. The saved recording is incomplete.'
+            self._accepting = False
+            self._stopping.set()
+        else:
+            self.problem = f'Recording incomplete: queue overflow dropped {self.dropped} events; logging continued.'
+        now = time.monotonic()
+        notify = self._last_drop_notice is None or now - self._last_drop_notice >= .1
+        if notify:
+            self._last_drop_notice = now
+        return notify
 
     def stop(self):
         with self._lock:
@@ -161,16 +236,28 @@ class MF4Recorder(QObject):
             while held:
                 write_next()
         except Exception as exc:
-            self.problem = f"Logging failed: {exc}. The recording may be incomplete."
+            logger.exception('Recording writer failed')
+            with self._lock:
+                self._accepting = False
+                self._stopping.set()
+                self.problem = f"Logging failed: {exc}. The recording may be incomplete."
         finally:
             with self._lock:
                 self._accepting = False
                 self._stopping.set()
+            losses = self.loss_statistics()
+            if losses['dropped_events']:
+                logger.warning('Recording queue overflow: policy=%s dropped=%s accepted=%s written=%s',
+                               losses['overflow_policy'], losses['dropped_events'], self.accepted, self.count)
             if writer is not None:
                 try:
+                    metadata.update(losses)
                     metadata.update(format="ASAM MDF 4.10 bus logging", protocol=self.codec.protocol, bus_channel=1,
                                     timestamp_corrections=corrections, recorded_frames=self.count,
                                     incomplete_reason=self.problem,
+                                    incomplete=bool(self.problem or self.dropped),
+                                    overflow_drop_policy='Discard incoming event when full; retain queued events.',
+                                    loss_count_scope='Recorder queue only; excludes driver/display loss and traffic after logging stops.',
                                     timestamp_reorder_window_seconds=window,
                                     timestamp_reordered_frames=reordered,
                                     timestamp_correction_reasons=reasons,
@@ -180,11 +267,12 @@ class MF4Recorder(QObject):
                     writer.finish(metadata)
                     finalized = True
                 except Exception as exc:
+                    logger.exception('MDF recording finalization failed')
                     self.problem += f" Could not finalize MDF4: {exc}. Temporary file: {path}"
                     try:
                         writer.abort()
                     except Exception:
-                        pass
+                        logger.exception('MDF writer abort failed')
             if finalized:
                 self.pending_path = path
             self._done.set()

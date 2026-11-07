@@ -1,7 +1,9 @@
 from __future__ import annotations
+import logging
+import os
 
 from PySide6.QtCore import QSettings, QTimer, Qt
-from PySide6.QtGui import QAction
+from PySide6.QtGui import QAction, QActionGroup
 from signal_explorer.ui.adapter_preferences import AdapterPreference, CanChannelPreferences, can_channel_key, can_device_key
 from pathlib import Path
 from signal_explorer.bus.discovery import discover_channels
@@ -33,9 +35,11 @@ from signal_explorer.bus.backends import (
     preferred_slcan_port,
 )
 from signal_explorer.bus.service import BusService
+from signal_explorer.bus.strategies import strategy_for
 from signal_explorer.bus.service import TX_REPORT_INTERFACES
 from signal_explorer.bus.canfd import FD_INTERFACES, DATA_BITRATES, validate_frame
 from signal_explorer.ui.trace_model import SignalTreeModel, IdFilter
+from signal_explorer.ui.trace_timestamps import TIMESTAMP_FORMATS
 from signal_explorer.ui.signal_tree_view import SignalTreeView
 from signal_explorer.ui.recording_panel import RecordingPanel
 from signal_explorer.ui.lin_panel import LinPanel
@@ -49,6 +53,8 @@ from signal_explorer.ui.timing_window import TimingWindow
 from signal_explorer.ui.bus_health_window import BusHealthWindow
 import can
 import cantools
+
+logger = logging.getLogger(__name__)
 
 
 class MainWindow(QMainWindow):
@@ -74,7 +80,9 @@ class MainWindow(QMainWindow):
         self._dbc_windows = []
         self._transmit_window = None
         self._timing_window = None
+        self._replay_timing_window = None
         self._bus_health_window = None
+        self._diagnostics_window = None
         self._timing_scan_busy = False
         self._timing_settings = {}
 
@@ -113,8 +121,23 @@ class MainWindow(QMainWindow):
         timing_menu = self.menuBar().addMenu('Timing')
         timing_action = timing_menu.addAction('CAN timing and bitrate detection...')
         timing_action.triggered.connect(self._open_timing_window)
+        timing_menu.addAction('Replay timing...').triggered.connect(self._open_replay_timing)
         analysis = self.menuBar().addMenu('Analysis')
         analysis.addAction('CAN Bus Health...').triggered.connect(self._open_bus_health)
+        trace_menu = self.menuBar().addMenu('Trace')
+        timestamp_menu = trace_menu.addMenu('Timestamp format')
+        self._timestamp_actions = QActionGroup(self)
+        self._timestamp_actions.setExclusive(True)
+        for mode, title, heading, explanation in TIMESTAMP_FORMATS:
+            action = timestamp_menu.addAction(title)
+            action.setData(mode)
+            action.setCheckable(True)
+            action.setChecked(mode == 'epoch')
+            action.setStatusTip(f'CAN/CAN FD trace: {explanation}')
+            self._timestamp_actions.addAction(action)
+        self._timestamp_actions.triggered.connect(lambda action: self._set_timestamp_format(action.data()))
+        help_menu = self.menuBar().addMenu('Help')
+        help_menu.addAction('Diagnostics...').triggered.connect(self._open_diagnostics)
         self._backend = QComboBox()
         for spec in sorted(BACKENDS, key=lambda spec: spec.label.casefold()):
             self._backend.addItem(spec.label, spec.key)
@@ -374,7 +397,7 @@ class MainWindow(QMainWindow):
                 self._channel.setEditText(preferred)
             else:
                 self._channel.setCurrentIndex(match)
-        elif spec.interface in {"vector", "neovi", "kvaser", "pcan", "nixnet"}:
+        elif strategy_for(spec.interface).enumerates_channels:
             options, self._discovery_note = discover_channels(spec.interface)
             self._channel_options = options
             for option in options:
@@ -488,7 +511,7 @@ class MainWindow(QMainWindow):
                 while combo.count() > len(rates): combo.removeItem(combo.count()-1)
 
     def _sync_ni_controls(self, *_):
-        ni = self._current_backend().interface == "nixnet"
+        ni = strategy_for(self._current_backend().interface).supports_termination
         self._termination.setVisible(ni)
         selected = self._channel.currentData()
         detected = isinstance(selected, dict) and self._channel.currentText() == self._channel.itemText(self._channel.currentIndex())
@@ -518,11 +541,11 @@ class MainWindow(QMainWindow):
         inject = self._demo.isChecked() and spec.interface == "virtual"
         selected = self._channel.currentData()
         config = selected if isinstance(selected, dict) and self._channel.currentText() == self._channel.itemText(self._channel.currentIndex()) else None
-        if spec.interface == "nixnet":
+        if strategy_for(spec.interface).supports_termination:
             config = dict(config or {}, can_termination=self._termination.isChecked())
         if self._enabled_can_configs:
             configs = [dict(c) for c in self._enabled_can_configs]
-            if spec.interface == 'nixnet':
+            if strategy_for(spec.interface).supports_termination:
                 for c in configs:
                     c['can_termination'] = self._termination.isChecked()
             config = dict(configs[0], channels=configs)
@@ -533,6 +556,7 @@ class MainWindow(QMainWindow):
                                   timing_settings=self._timing_settings.get(spec.interface))
 
     def _on_connected(self, label: str) -> None:
+        self._model.start_session(self._service.session_started_at)
         self._driver_tx_reports.setChecked(self._service.driver_tx_reports)
         self._listen_only.setChecked(self._service.listen_only)
         self._display_drop_base = 0
@@ -630,6 +654,11 @@ class MainWindow(QMainWindow):
         self._update_counts()
         if checked:
             self._table.scrollToBottom()
+
+    def _set_timestamp_format(self, mode):
+        self._model.set_timestamp_mode(mode)
+        if mode == 'absolute':
+            self._table.setColumnWidth(0, max(250, self._table.columnWidth(0)))
 
     def _choose_vector_dll(self):
         path, _ = QFileDialog.getOpenFileName(self, "Select installed Vector XL API library", "", "Vector XL API (vxlapi64.dll)")
@@ -819,9 +848,57 @@ class MainWindow(QMainWindow):
         self._set_repeat_controls(False)
 
     def _on_error(self, text: str) -> None:
+        logger.error('CAN: %s', text)
         self._stop_repeated_send()
         self._status.setText(text)
         QMessageBox.warning(self, "Signal Explorer", text)
+
+    def _diagnostics_context(self):
+        def options(combo):
+            return [dict(label=combo.itemText(i), config=combo.itemData(i)) for i in range(combo.count())]
+        return dict(can_session=self._service.session_info,
+                    can_connected=self._service.is_connected,
+                    detected_can_channels=[dict(label=o.label, config=o.config) for o in self._channel_options],
+                    can_discovery_status=self._notes.text(),
+                    selected_can_backend=self._current_backend().interface,
+                    selected_can_channel=self._channel.currentText(),
+                    selected_can_bitrate=self._bitrate.currentData(),
+                    selected_can_fd=self._fd.isChecked(),
+                    enabled_can_channels=self._enabled_can_configs,
+                    lin_session=self._lin.service.session_info,
+                    lin_connected=self._lin.service.is_connected,
+                    detected_lin_channels=options(self._lin.channel),
+                    ethernet_session=self._ethernet.service.session_info,
+                    ethernet_connected=self._ethernet.service.is_connected,
+                    detected_ethernet_adapters=options(self._ethernet.adapter),
+                    configured_vector_dll=QSettings().value('drivers/vector_dll', ''),
+                    environment_vector_dll=os.getenv('SIGNAL_EXPLORER_VECTOR_DLL', ''),
+                    can_ui_dropped=self._service.ui_dropped,
+                    recording_loss=dict(can=self._recording_panel.recorder.loss_statistics(),
+                                        lin=self._lin.recording.recorder.loss_statistics(),
+                                        ethernet=self._ethernet.recording.recorder.loss_statistics()),
+                    replay_timing={name: panel.playback.timing_snapshot() if panel.playback_busy else panel.last_replay_timing
+                                   for name, panel in self._replay_panels().items()})
+
+    def _replay_panels(self):
+        return {'CAN': self._recording_panel, 'LIN': self._lin.recording, 'Ethernet': self._ethernet.recording}
+
+    def _open_replay_timing(self):
+        if self._replay_timing_window is None:
+            from signal_explorer.ui.replay_timing_window import ReplayTimingWindow
+            self._replay_timing_window = ReplayTimingWindow(self._replay_panels(), self)
+        self._replay_timing_window.show()
+        self._replay_timing_window.raise_()
+        self._replay_timing_window.activateWindow()
+
+    def _open_diagnostics(self):
+        if self._diagnostics_window is None:
+            from signal_explorer.ui.diagnostics_window import DiagnosticsWindow
+            self._diagnostics_window = DiagnosticsWindow(self._diagnostics_context, self)
+        self._diagnostics_window.refresh()
+        self._diagnostics_window.show()
+        self._diagnostics_window.raise_()
+        self._diagnostics_window.activateWindow()
 
     def closeEvent(self, event) -> None:  # noqa: N802
         if self._service.busy:
@@ -887,7 +964,7 @@ class MainWindow(QMainWindow):
                     channel=_typed_channel(spec.interface, self._channel_value()), ignore_config=True)
         for key in ('serial', 'channel_index', 'app_name'):
             if key in config: args[key] = config[key]
-        if spec.interface == 'nixnet': args['can_termination'] = self._termination.isChecked()
+        if strategy_for(spec.interface).supports_termination: args['can_termination'] = self._termination.isChecked()
         return dict(interface=spec.interface, label=spec.label, channel=self._channel.currentText(),
                     bitrate=int(self._bitrate.currentData()), data_bitrate=int(self._data_bitrate.currentData()),
                     fd=self._fd.isChecked(), connected=self._service.is_connected or self._service.busy,

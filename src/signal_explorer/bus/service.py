@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 import math
+import logging
 from copy import copy
 from threading import RLock
 
@@ -9,7 +10,6 @@ import can
 from PySide6.QtCore import QObject, QThread, QTimer, Signal
 
 from signal_explorer.bus.backends import BackendSpec
-from signal_explorer.bus.discovery import prepare_vector_library
 from signal_explorer.bus.canfd import fd_configuration, validate_frame
 from signal_explorer.bus.ownership import DeviceLease
 from signal_explorer.bus.demo import demo_frames, demo_reply
@@ -18,12 +18,14 @@ from signal_explorer.bus.multichannel import native_channel, open_channels
 from signal_explorer.bus.display_queue import DisplayQueue
 from signal_explorer.bus.frames import snapshot_message
 from signal_explorer.bus.listen_only import open_bus
-from signal_explorer.bus.timing import TimingSettings, SILENT_INTERFACES
+from signal_explorer.bus.timing import TimingSettings
 from signal_explorer.bus.tx_dispatch import TxDispatcher, TxFailure, send_failure
 from signal_explorer.bus.health import BusHealth
-from signal_explorer.bus.health_native import query_health, install_vector_events
+from signal_explorer.bus.health_native import query_health
+from signal_explorer.bus.strategies import BackendStrategy, interfaces_supporting, strategy_for
 
 _DRIVER_TASKS = set()  # Keep outstanding native calls alive until Qt receives completion.
+logger = logging.getLogger(__name__)
 
 
 class _DriverTask(QThread):
@@ -35,14 +37,16 @@ class _DriverTask(QThread):
 
     def run(self):
         try: self.result = self.operation()
-        except Exception as exc: self.problem = exc
+        except Exception as exc:
+            logger.exception('Native CAN operation failed')
+            self.problem = exc
 
     def release(self):
         self.owner = self.operation = None
         _DRIVER_TASKS.discard(self)
         self.deleteLater()
 
-TX_REPORT_INTERFACES = frozenset({'vector', 'neovi', 'kvaser', 'pcan', 'nixnet'})
+TX_REPORT_INTERFACES = interfaces_supporting('tx_reports')
 
 
 class _Reader(QThread):
@@ -60,6 +64,7 @@ class _Reader(QThread):
                 if msg is not None and self._capture is not None:
                     self._capture(msg)
             except Exception as exc:
+                logger.exception('CAN receive failed')
                 self.failed.emit(f"Receive failed ({type(exc).__name__}): {exc}")
                 return
 
@@ -93,6 +98,7 @@ class BusService(QObject):
         self._rx_clock = None
         self._clock = SessionClock()
         self._interface = None
+        self._strategy = BackendStrategy()
         self.driver_tx_reports = False
         self.listen_only = False
         self._demo_bus: can.BusABC | None = None
@@ -204,6 +210,7 @@ class BusService(QObject):
                          fd=False, data_bitrate=2000000, driver_tx_reports=False,
                          listen_only=False, timing_settings=None):
         bus = lease = None
+        strategy = strategy_for(backend.interface)
         kwargs: dict[str, Any] = {
             "interface": backend.interface,
             "channel": _typed_channel(backend.interface, channel),
@@ -214,59 +221,38 @@ class BusService(QObject):
             for key in ("channel", "serial", "channel_index", "app_name"):
                 if key in device_config:
                     kwargs[key] = device_config[key]
-        if driver_tx_reports and backend.interface not in TX_REPORT_INTERFACES:
+        if driver_tx_reports and not strategy.tx_reports:
             raise ValueError('Driver TX reports are not supported by this backend. Disable that option.')
         kwargs["receive_own_messages"] = driver_tx_reports
-        if driver_tx_reports and backend.interface == 'kvaser':
-            kwargs['single_handle'] = False
-        if backend.interface == "nixnet":
-            kwargs["can_termination"] = bool((device_config or {}).get("can_termination", False))
         kwargs["ignore_config"] = True
-        if backend.interface == "vector":
-            prepare_vector_library()
-        if backend.interface not in {"virtual"}:
-            kwargs["bitrate"] = bitrate
-        if backend.interface == "virtual":
-            kwargs["receive_own_messages"] = False
-        if backend.interface == "slcan":
-            kwargs.setdefault("tty_baudrate", 115200)
+        strategy.prepare_connection(kwargs, bitrate, driver_tx_reports, device_config or {})
 
         try:
-            if listen_only and backend.interface not in SILENT_INTERFACES:
+            if listen_only and not strategy.listen_only:
                 raise ValueError('Listen-only is unavailable for this backend; no active-mode fallback is allowed.')
             request = timing_settings or TimingSettings(bitrate=bitrate, data_bitrate=data_bitrate)
             if request.bitrate != bitrate or (fd and request.data_bitrate != data_bitrate):
                 raise ValueError('Timing rates must match the connection rates.')
             custom_timing = request.build(backend.interface, fd)
             primary_channel = native_channel(backend.interface, kwargs['channel'])
-            for cfg in configs:
-                if cfg.get('can_termination') and cfg.get('can_term_available') is False:
-                    raise ValueError('An enabled NI channel has no internal termination.')
-                if fd and cfg.get('supports_fd') is False:
-                    raise ValueError('An enabled channel does not support CAN FD. Disable that channel or use Classic CAN.')
-            if (backend.interface == "nixnet" and kwargs["can_termination"]
-                    and (device_config or {}).get("can_term_available") is False):
-                raise ValueError("The selected NI channel has no internal termination. Use external termination.")
+            strategy.validate_connection(device_config or {}, configs, fd)
             if fd:
-                if device_config and device_config.get("supports_fd") is False:
-                    raise ValueError("The selected channel does not support CAN FD.")
                 kwargs.update(fd_configuration(backend.interface, bitrate, data_bitrate))
             if custom_timing is not None:
                 kwargs['timing'] = custom_timing
-            if backend.interface in {'vector', 'neovi'}:
+            if strategy.needs_lease:
                 lease = DeviceLease(backend.interface, kwargs.get('serial'), 'CAN')
             factory = lambda **args: open_bus(monitor_only=listen_only, **args)
             bus = (open_channels(factory, backend.interface, configs, kwargs)
                          if len(configs) > 1 else factory(**kwargs))
         except Exception as exc:  # noqa: BLE001 — surface any vendor/driver failure in the UI
+            logger.exception('CAN connect failed: %s channel %s', backend.interface, channel)
             bus = None
             if lease:
                 lease.release()
                 lease = None
             hint = (' Driver TX reports require compatible drivers. Disable that option to use local TX estimates.'
-                    if driver_tx_reports else '') + (' Check the nixnet Python extra, the 64-bit NI-XNET driver, '
-                    'and the exact CAN interface name in NI MAX; close other bus sessions.'
-                    if backend.interface == 'nixnet' else '')
+                    if driver_tx_reports else '') + strategy.connection_hint
             raise RuntimeError(f"Connect failed ({backend.label}): {exc}{hint}") from exc
 
         return dict(backend=backend, channel=channel, bitrate=bitrate, inject_demo=inject_demo,
@@ -286,15 +272,15 @@ class BusService(QObject):
         self._display.reset()
         self._clock = SessionClock()
         self._interface = backend.interface
+        self._strategy = strategy_for(backend.interface)
+        self.session_started_at = self._clock.now()
         self.driver_tx_reports = driver_tx_reports
         self.listen_only = listen_only
-        self._rx_clock = HardwareClock(self._clock.now) if backend.interface == 'neovi' else None
+        self._rx_clock = HardwareClock(self._clock.now) if self._strategy.timestamp_source == 'device_relative' else None
         self._channel = primary_channel
         self.channels = [dict(native_channel=native_channel(backend.interface, cfg['channel']),
                               label=cfg.get('channel_label', str(cfg['channel'])),
-                              bus_channel=(int(cfg['channel']) + 1 if backend.interface == 'vector' else
-                                           int(cfg['channel_label'][3:]) if cfg.get('channel_label', '').startswith('CAN')
-                                           and cfg['channel_label'][3:].isdigit() else index + 1))
+                              bus_channel=self._strategy.bus_number(cfg, index))
                          for index, cfg in enumerate(configs)]
         self.tx_channel = self._channel
         keys = list(self._bus.buses) if hasattr(self._bus, 'buses') else ['shared']
@@ -305,6 +291,9 @@ class BusService(QObject):
                                  data_bitrate=data_bitrate if fd else None,
                                  serial=(device_config or {}).get("serial"))
         self.session_info['channels'] = self.channels
+        self.session_info['session_started_at'] = self.session_started_at
+        logger.info('CAN connected: interface=%s channels=%s bitrate=%s FD=%s listen_only=%s',
+                    backend.interface, self.channels, bitrate, fd, listen_only)
         self.session_info.update(listen_only=listen_only, timing_request=vars(request),
                                  calculated_timing=str(custom_timing) if custom_timing is not None else 'Driver/default timing')
         self.session_info.update(
@@ -313,24 +302,19 @@ class BusService(QObject):
             tx_semantics=('Driver TX reports only; no synthetic TX echo; not intended-ECU delivery proof'
                           if driver_tx_reports else 'Local send accepted; host estimate, not a bus acknowledgement'),
             rx_timestamp_source=('Shared device clock anchored at first RX/TX event' if self._rx_clock else
-                                 'Host receipt estimate' if backend.interface in {'virtual', 'slcan'} else
+                                 'Host receipt estimate' if self._strategy.timestamp_source == 'host_receipt' else
                                  'Driver epoch timestamp, calibrated by python-can'))
-        if backend.interface == "nixnet":
-            self.session_info["can_termination"] = kwargs["can_termination"]
-            self.session_info["serial"] = (device_config or {}).get("device_serial")
-            for key in ("device_model", "physical_port"):
-                self.session_info[key] = (device_config or {}).get(key)
+        self.session_info.update(self._strategy.session_details(device_config or {}, kwargs))
         if self._rx_clock is not None:
             self.session_info['timestamp_source'] = 'Hardware RX/TX intervals anchored to monotonic host epoch at first event'
         self.health.start(self.channels, self.session_info)
-        if backend.interface == 'vector':
-            install_vector_events(self._bus, self.health, self.health.generation)
+        self._strategy.setup_health(self._bus, self.health)
         self._health_timer.start()
         self._reader = _Reader(self._bus, self._capture_received)
         self._reader.failed.connect(self._on_reader_failed)
         self._reader.start()
 
-        if inject_demo and backend.interface == "virtual":
+        if inject_demo and self._strategy.simulated:
             try:
                 self._demo_bus = can.Bus(
                     interface="virtual",
@@ -385,7 +369,7 @@ class BusService(QObject):
         if self._rx_clock is not None:
             captured.timestamp = self._rx_clock.to_unix(msg.timestamp)
             captured.timestamp_source = 'device clock anchored to monotonic host epoch'
-        elif self._interface in {'virtual', 'slcan'}:
+        elif self._strategy.timestamp_source == 'host_receipt':
             captured.timestamp = self._clock.now()
             captured.timestamp_source = 'monotonic host receive estimate'
         elif not isinstance(msg.timestamp, (int, float)) or not math.isfinite(msg.timestamp) or msg.timestamp <= 0:
@@ -493,6 +477,8 @@ class BusService(QObject):
                 if self._device_lease: self._device_lease.release()
 
     def _clear_connection(self):
+        if self._interface is not None:
+            logger.info('CAN disconnected: %s', self._interface)
         self.health.stop()
         self._flush_display(self._display.capacity)
         self._bus = self._demo_bus = self._reader = self._dispatcher = self._device_lease = None
@@ -512,7 +498,9 @@ class BusService(QObject):
         if self._bus is not None:
             self._begin_disconnect()
             try: self._shutdown_connection()
-            except Exception as exc: self.error.emit(f'CAN cleanup failed: {exc}')
+            except Exception as exc:
+                logger.exception('CAN cleanup failed')
+                self.error.emit(f'CAN cleanup failed: {exc}')
         self._clear_connection()
 
     def disconnect_async(self):
@@ -597,9 +585,4 @@ class BusService(QObject):
 
 
 def _typed_channel(interface: str, channel: str) -> str | int:
-    if interface in {"slcan", "virtual", "nixnet"}:
-        return channel
-    try:
-        return int(channel)
-    except ValueError:
-        return channel
+    return strategy_for(interface).connection_channel(channel)

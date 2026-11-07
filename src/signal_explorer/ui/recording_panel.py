@@ -1,6 +1,7 @@
 """Save-on-stop recording and explicit TX replay controls."""
 from datetime import datetime
 from pathlib import Path
+import logging
 
 from PySide6.QtCore import Qt, Signal, Slot, QTimer
 from PySide6.QtWidgets import (QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QLabel,
@@ -9,6 +10,8 @@ from PySide6.QtWidgets import (QWidget, QHBoxLayout, QVBoxLayout, QPushButton, Q
 from signal_explorer.recording.recorder import MF4Recorder
 from signal_explorer.recording.playback import MF4Playback
 from signal_explorer.paths import save_path
+
+logger = logging.getLogger(__name__)
 
 
 class RecordingPanel(QWidget):
@@ -25,12 +28,19 @@ class RecordingPanel(QWidget):
         self.replay_label = replay_label
         self.database_path = None
         self.playback = None
+        self.replay_timing_mode = 'balanced'
+        self.last_replay_timing = None
         self._closing = False
         self._saving = False
         self.log = QPushButton("Start Logging")
         self.log.clicked.connect(self._toggle_logging)
         self.save = QPushButton("Save Log...")
         self.save.clicked.connect(self._save_log)
+        self.overflow = QComboBox()
+        self.overflow.addItem('Stop on overflow', 'stop')
+        self.overflow.addItem('Continue with loss reporting', 'continue')
+        self.overflow.setToolTip('If the recorder queue fills, stop the log or discard incoming events and continue. '
+                                 'Both modes retain queued events and mark loss in the saved recording.')
         self.replay = QPushButton("Playback Log as TX")
         self.replay.clicked.connect(self._toggle_playback)
         self.source_bus = QSpinBox()
@@ -45,7 +55,7 @@ class RecordingPanel(QWidget):
         self.playback_status = QLabel("Playback idle")
         self.playback_status.setWordWrap(True)
         bar = QHBoxLayout()
-        for widget in (self.log, self.save, self.replay, QLabel("Recorded bus"), self.source_bus,
+        for widget in (self.log, self.save, self.overflow, self.replay, QLabel("Recorded bus"), self.source_bus,
                        self.direction, QLabel("Playback: 1x recorded timing")):
             bar.addWidget(widget)
         bar.addStretch()
@@ -61,6 +71,9 @@ class RecordingPanel(QWidget):
         service.about_to_disconnect.connect(self._on_disconnect)
         self.recorder.changed.connect(self._refresh)
         self.recorder.finalized.connect(self._on_finalized)
+        self._status_timer = QTimer(self)
+        self._status_timer.setInterval(100)
+        self._status_timer.timeout.connect(self._refresh)
         self._refresh()
 
     @property
@@ -70,6 +83,13 @@ class RecordingPanel(QWidget):
     @Slot()
     def _refresh(self, *_):
         recording = self.recorder.recording
+        if self.recorder.busy and not self._status_timer.isActive():
+            self._status_timer.start()
+        elif not self.recorder.busy:
+            self._status_timer.stop()
+        self.overflow.setEnabled(not self.recorder.busy and self.recorder.pending_path is None)
+        self.status.setStyleSheet('color: #bd1828; font-weight: bold;' if self.recorder.dropped else '')
+        loss = f'Dropped {self.recorder.dropped} events'
         self.log.setText("Stop Logging" if recording else "Start Logging")
         self.log.setEnabled(recording or (self.service.is_connected and not self.recorder.busy
                                          and self.recorder.pending_path is None))
@@ -80,19 +100,23 @@ class RecordingPanel(QWidget):
         self.source_bus.setEnabled(not self.playback_busy)
         self.direction.setEnabled(not self.playback_busy)
         if recording:
-            self.status.setText(f"Logging RX + TX: {self.recorder.count} events written (trace filters/pause do not affect recording)")
+            warning = ' — RECORDING INCOMPLETE' if self.recorder.dropped else ''
+            self.status.setText(f"Logging RX + TX: {self.recorder.count} events written | {loss}{warning} "
+                                '(trace filters/pause do not affect recording)')
         elif self.recorder.busy:
-            self.status.setText("Finalizing MDF4 recording...")
+            self.status.setText(f'Finalizing MDF4 recording... | {loss}')
         elif self.recorder.pending_path:
-            self.status.setText(f"Unsaved MDF4 recording ({self.recorder.count} frames): {self.recorder.pending_path}")
+            self.status.setText(f"Unsaved MDF4 recording ({self.recorder.count} frames; {loss}): {self.recorder.pending_path}")
 
     def _toggle_logging(self):
         if self.recorder.recording:
             self.recorder.stop()
         elif self.service.is_connected:
             try:
+                self.recorder.overflow_policy = self.overflow.currentData()
                 self.recorder.start(self.service.session_info, self.database_path)
             except Exception as exc:
+                logger.exception('Could not start recording')
                 QMessageBox.warning(self, "Logging failed", str(exc))
         self._refresh()
 
@@ -131,8 +155,9 @@ class RecordingPanel(QWidget):
             if self.playback_busy and Path(path).resolve() == Path(self.playback.path).resolve():
                 raise ValueError("Choose a different file while this recording is being played.")
             saved = self.recorder.save_as(path)
-            self.status.setText(f"Saved {self.recorder.count} frames: {saved}")
+            self.status.setText(f"Saved {self.recorder.count} frames; dropped {self.recorder.dropped} events: {saved}")
         except Exception as exc:
+            logger.exception('Could not save recording; temporary log retained')
             self._closing = False
             QMessageBox.warning(self, "Save failed - log retained", str(exc))
         finally:
@@ -163,7 +188,8 @@ class RecordingPanel(QWidget):
             self.source_bus.value() if bus_channel is None else bus_channel,
             self.direction.currentData() if direction is None else direction, self,
             codec=self.playback_codec_factory() if self.playback_codec_factory else None,
-            tx_options=self.tx_options() if self.tx_options else None)
+            tx_options=self.tx_options() if self.tx_options else None,
+            timing_mode=self.replay_timing_mode)
         self.playback.progress.connect(self.playback_status.setText)
         self.playback.failed.connect(self._playback_failed)
         self.playback.completed.connect(self.playback_status.setText)
@@ -185,8 +211,10 @@ class RecordingPanel(QWidget):
         worker = self.playback
         if worker is None:
             return
+        self.last_replay_timing = worker.timing_snapshot()
         if worker.cancel.is_set():
-            self.playback_status.setText(f"Playback stopped: {worker.sent} {worker.tx_options.get('operation_label', 'TX operations')}")
+            self.playback_status.setText(f"Playback stopped: {worker.sent} {worker.tx_options.get('operation_label', 'TX operations')}; "
+                                         + worker.timing_summary())
         self.playback = None
         worker.deleteLater()
         self.playback_changed.emit(False)

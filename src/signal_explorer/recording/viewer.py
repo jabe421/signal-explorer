@@ -221,6 +221,8 @@ class LogReplayController(QObject):
 
     def _ended(self):
         worker = self.worker
+        if worker.cancel.is_set() or self.outcome == 'failed':
+            self.output.emit('Replay timing: '+worker.timing_summary()+'\n')
         self._display_line(); self._display.stop()
         self.outcome = 'stopped' if worker.cancel.is_set() else self.outcome or 'completed'
         self.worker = None

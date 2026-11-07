@@ -3,11 +3,14 @@ from dataclasses import replace
 from threading import RLock
 from queue import Queue,Full,Empty
 import time
+import logging
 import struct
 import ipaddress
 from PySide6.QtCore import QObject,QTimer,Signal,QThread
 from signal_explorer.ethernet.model import (EthernetFrame,LOCAL_MAC,PEER_MAC,LOCAL_IP,PEER_IP,
                                           PRESETS,preset,make_frame,udp_payload,decode)
+
+logger = logging.getLogger(__name__)
 
 
 class _EthernetReader(QThread):
@@ -21,7 +24,9 @@ class _EthernetReader(QThread):
             while not self.isInterruptionRequested():
                 self.transport.poll()
                 self.msleep(5)
-        except Exception as exc:self.failed.emit(str(exc))
+        except Exception as exc:
+            logger.exception('Ethernet receive failed')
+            self.failed.emit(str(exc))
 
 
 class EthernetService(QObject):
@@ -38,6 +43,9 @@ class EthernetService(QObject):
         super().__init__(parent)
         self._lock=RLock();self._connected=False;self.peer_replies=True
         self.session_info={};self._counter=0
+        self.error.connect(lambda text: logger.error('Ethernet: %s', text))
+        self.connected.connect(lambda label: logger.info('Ethernet connected: %s', label))
+        self.disconnected.connect(lambda: logger.info('Ethernet disconnected'))
         self.transport=None;self._reader=None
         self._ui_queue=Queue(maxsize=2000);self.ui_dropped=0
         self._ui_timer=QTimer(self);self._ui_timer.setInterval(20);self._ui_timer.timeout.connect(self._flush_native)
@@ -88,6 +96,7 @@ class EthernetService(QObject):
             self._ui_timer.start()
             self._reader.start()
         except Exception:
+            logger.exception('Ethernet connection failed')
             self.disconnect_bus()
             raise
         self.connected.emit(f'{label} | Ethernet session open')

@@ -6,7 +6,8 @@ root = Path(SPECPATH).resolve().parents[1]
 datas = collect_data_files('signal_explorer', includes=['assets/*', 'lin/*.ldf', 'scripting/demo_can.py'])
 datas += [(str(root/'src/signal_explorer/scripting/demo_can.py'), 'signal_explorer/scripting')]
 datas += collect_data_files('asammdf')
-for distribution in ('signal-explorer', 'python-can', 'asammdf', 'cantools', 'ldfparser', 'python-ics', 'nixnet'):
+for distribution in ('signal-explorer', 'python-can', 'asammdf', 'cantools', 'ldfparser', 'python-ics', 'nixnet',
+                     'PySide6-Essentials', 'pyserial', 'gs-usb', 'pyusb'):
     datas += copy_metadata(distribution)
 
 hidden = [

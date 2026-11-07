@@ -5,6 +5,7 @@ No vendor DLLs or examples are redistributed. CAN continues to use PCAN-Basic.
 """
 import ctypes as C
 import os
+import logging
 import threading
 import time
 
@@ -131,7 +132,7 @@ class PeakLinTransport:
             try:
                 self.close()
             except Exception:
-                pass  # Preserve the connection error; close attempts every release.
+                logging.getLogger(__name__).exception('PEAK LIN cleanup after connection failure also failed')
             raise
 
     def _entry(self, identifier, response=None):

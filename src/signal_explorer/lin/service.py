@@ -1,10 +1,13 @@
 """LIN session orchestration; logical simulator is the first transport."""
 import math
+import logging
 import struct
 from PySide6.QtCore import QObject, QTimer, QThread, Signal, Qt
 
 from signal_explorer.lin.model import Response, ScheduleSlot, validate_schedule, lin_checksum
 from signal_explorer.lin.simulation import SimulatedLinBus
+
+logger = logging.getLogger(__name__)
 
 
 class _NativeReader(QThread):
@@ -19,6 +22,7 @@ class _NativeReader(QThread):
             try:
                 self.endpoint.poll()
             except Exception as exc:
+                logger.exception('Native LIN receive failed')
                 self.failed.emit(str(exc))
                 return
             self.msleep(5)
@@ -43,6 +47,9 @@ class LinService(QObject):
         self.lengths = {16: 2, 32: 4}
         self.models = {16: "enhanced", 32: "enhanced"}
         self.session_info = {}
+        self.error.connect(lambda text: logger.error('LIN: %s', text))
+        self.connected.connect(lambda label: logger.info('LIN connected: %s', label))
+        self.disconnected.connect(lambda: logger.info('LIN disconnected'))
         self.database = None
         self.configured_responses = {}
         self._schedule = QTimer(self)
@@ -96,6 +103,7 @@ class LinService(QObject):
             self.session_info = dict(protocol="LIN", adapter="Simulated LIN", native_channel="Virtual LIN 1",
                                      role=role, bitrate=baudrate, simulated=True)
         except Exception:
+            logger.exception('LIN connection failed')
             self.disconnect_bus()
             raise
         self.connected.emit(f"Simulated LIN | {role} | {baudrate} bit/s")
@@ -132,6 +140,7 @@ class LinService(QObject):
             self._reader.failed.connect(self._native_failed)
             self._reader.start()
         except Exception:
+            logger.exception('Native LIN connection failed')
             self.disconnect_bus()
             raise
         self.connected.emit(f'{label} | {role} | {baudrate} bit/s')

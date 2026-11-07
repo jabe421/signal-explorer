@@ -1,6 +1,6 @@
 # Recording and replay extension points
 
-Updated November 2, 2026.
+Updated November 6, 2026.
 
 ## Current implementation
 
@@ -47,6 +47,95 @@ Ethernet replay uses raw frames, adds required minimum padding, and preserves
 recorded addresses; it provides no TCP/DoIP session reconstruction. Native LIN
 and Ethernet backends exist, with physical qualification limits described in
 the User Guide. Do not reinterpret another protocol's records as CAN frames.
+
+## Replay timing measurements and waiting policy
+
+Open **Timing > Replay timing...** for settings and live/last-run measurements
+for CAN, LIN and Ethernet, including File Viewer replay. **Balanced** is the
+default and performs no busy-wait. Windows replay uses a private high-resolution
+waitable timer and a state-change event so pause/resume/stop interrupt long
+waits. Global timer resolution is unchanged. If the native timer is unavailable
+or fails, the report identifies the interruptible Python condition fallback.
+
+**Precision** is optional: wake up to 0.5 ms early and check the final interval
+outside the pause/stop lock. It may increase CPU use and cannot guarantee timing
+under Windows scheduling or bus arbitration. Stop replay before changing mode;
+the setting applies to the next replay in all protocol tabs and File Viewer.
+Application restart restores Balanced.
+
+Measurements distinguish scheduler lateness before the send callback, time
+inside the callback, and lateness when it returns. These are host measurements,
+not wire timestamps, CAN acknowledgement or ECU delivery. An in-flight native
+send cannot be cancelled retroactively. Original logfile offsets, source/direction
+selection, preflight and pause-adjusted deadlines remain in effect. Late events
+are not silently skipped. File Viewer's line delay still affects display only.
+
+Each metric stores whole-run count/mean/max and p50/p95/p99 from the most recent
+4096 attempts. Sorting runs outside the replay lock. Failed sends are measured
+too. The window retains stopped/failed/completed results; **Copy timing report**,
+**Help > Diagnostics** and diagnostic logs include the report. Replay Output
+includes a summary. Worker CPU counters are OS-accounted and may be quantized,
+including zero for short runs. CPU/wall measurements cover the replay phase,
+excluding preflight parsing. Elapsed replay wall time includes pauses.
+
+Reproduce the scheduler comparison without hardware:
+
+```powershell
+python tools/benchmark_replay_timing.py --frames 600 --interval-ms 2 --repeats 3 --output tmp/replay-timing.json
+```
+
+On the November 6, 2026 development PC, three 600-frame runs at 2 ms spacing
+gave median p95 scheduler lateness around 14.6 ms with condition waits, 0.66 ms
+with the high-resolution timer, and 0.26 ms with Precision. These are observations,
+not performance limits. VN1630A serial 604069 CAN1-to-CAN2 checks used 120-frame,
+5 ms recordings in Classic CAN (500 kbit/s) and CAN FD (500 kbit/s / 2 Mbit/s),
+two runs per mode/protocol. All eight replays arrived in sequence. Precision
+reduced the median of those runs' p95 driver-reported RX spacing errors from
+1.34 to 0.62 ms in Classic CAN and 1.09 to 0.71 ms in CAN FD. No independent
+wire-time reference was used. Other hardware/load combinations need separate
+qualification; timing varies with the PC's load.
+
+Implementation references: [Windows high-resolution waitable timers](https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-createwaitabletimerexw)
+and [interruptible multi-object waits](https://learn.microsoft.com/en-us/windows/win32/sync/waiting-for-multiple-objects).
+
+## Queue overflow policies
+
+Each protocol's logger uses a bounded 100,000-event queue. Select the policy
+before **Start Logging**; it cannot change while recording/finalizing:
+
+- **Stop on overflow** (default): count the event that could not be queued,
+  stop accepting new events, drain queued data and finalize an incomplete log.
+  Traffic after the stop is outside the recording and is not counted as dropped.
+- **Continue with loss reporting**: discard the incoming event when full,
+  retain queued events, and accept new events again as space becomes available.
+  The incomplete warning remains for the rest of that session, even after
+  recovery. This does not provide lossless recording under sustained overload.
+
+The live status shows cumulative dropped events in red and refreshes at 10 Hz,
+including while the disk writer is stalled. Capture avoids copying events that
+cannot fit and does not write diagnostic logs or emit a signal for every drop.
+On stop/disconnect, a single incomplete-recording warning precedes the normal
+save dialog. A new session resets counters and warning state. Disk/write errors
+stop either mode; continue mode applies only to queue overflow.
+
+The `SignalExplorer-session.json` attachment stores `overflow_policy`,
+`accepted_events`, `recorded_frames`, `dropped_events`, `dropped_rx_events`,
+`dropped_tx_events`, `dropped_other_events`, `first_dropped_timestamp`,
+`last_dropped_timestamp`, `incomplete`, `incomplete_reason`,
+`overflow_drop_policy` and `loss_count_scope`. Unknown/invalid dropped-event
+timestamps are null. After a normal drain, accepted events equal written events.
+These are recorder-queue counts, distinct from display and driver loss counters.
+The same policy/metadata apply to CAN, LIN and Ethernet codecs without changing
+their existing file schemas or interoperability limitations.
+
+Physical bench check, November 6, 2026: VN1630A serial 604069, CAN1 connected to
+CAN2, passed normal recording and both overflow policies with Classic CAN at
+500 kbit/s and CAN FD at 500 kbit/s / 2 Mbit/s (64-byte payloads). The recorder
+engine saved the expected CAN1 TX/CAN2 RX data, loss counts and channel mapping,
+and resumed capture after pressure cleared in continue mode. Overflow was
+induced with a four-event queue and a controlled slow writer. This does not
+qualify sustained bus saturation, actual disk-full recovery, other adapters or
+physical LIN/Ethernet recording.
 
 ## Timestamp order and TX evidence
 

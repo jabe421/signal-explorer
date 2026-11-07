@@ -2,9 +2,10 @@
 from dataclasses import dataclass
 import math
 import can
+from signal_explorer.bus.strategies import interfaces_supporting, strategy_for
 
-SILENT_INTERFACES = frozenset({'virtual', 'vector', 'pcan', 'kvaser', 'nixnet'})
-ADVANCED_INTERFACES = frozenset({'vector', 'pcan', 'kvaser', 'nixnet'})
+SILENT_INTERFACES = interfaces_supporting('listen_only')
+ADVANCED_INTERFACES = interfaces_supporting('advanced_timing')
 SCAN_INTERFACES = SILENT_INTERFACES - {'virtual'}
 SCAN_RATES = (500000, 250000, 125000, 1000000, 100000, 50000, 20000, 10000)
 
@@ -35,7 +36,7 @@ class TimingSettings:
                 raise ValueError('Sample point must be from 50 to less than 100 percent.')
             if not isinstance(sjw, int) or isinstance(sjw, bool) or sjw < 1:
                 raise ValueError('SJW must be a positive integer number of time quanta.')
-        clock = 40000000 if interface == 'nixnet' else 80000000 if fd else 8000000 if interface == 'pcan' else 16000000
+        clock = strategy_for(interface).timing_clock(fd)
         candidates = []
         if fd:
             for t in can.BitTimingFd.iterate_from_sample_point(clock, self.bitrate, self.sample_point,

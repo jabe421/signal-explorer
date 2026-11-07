@@ -188,13 +188,49 @@ python -m signal_explorer
 
 Connect to **virtual** first. Enable **Inject demo traffic** to see frames without a physical bus.
 
+## Application diagnostics
+
+Open **Help → Diagnostics...** for application/package versions, installed-build
+version and commit, connection settings, the last scanned CAN/LIN/Ethernet
+devices, configured Vector DLL paths, loaded driver DLL paths/file versions,
+display-drop counts and recent warnings/errors. **Copy diagnostics** copies the
+report to the clipboard; it does not send or upload it. **Refresh report** updates
+the report from current state without rescanning or opening hardware. Use the
+protocol's **Refresh devices/adapters** control to update its device inventory.
+A DLL marked **not loaded** is not proof that its driver is missing.
+
+Normal application launches write rotating diagnostic logs to
+`%LOCALAPPDATA%\Signal Explorer\logs\signal-explorer.log` (2 MB per file, three
+backups). A temporary-directory fallback is used if that location is not
+writable; the report shows the actual log path. Logs include connection events,
+driver/worker failures, recording/playback errors, script errors and cleanup
+failures. They do not record every received/transmitted frame or ordinary script
+output; use bus recording for traffic. Keep the rotated files when reporting an
+intermittent problem. Logging failure does not prevent application startup.
+
 ## First development target
 
 `src/signal_explorer/bus/service.py` is the bus session (connect, read thread, disconnect).
 `src/signal_explorer/ui/main_window.py` is the connection bar and live trace.
-Add a new adapter by extending `BACKENDS` in `src/signal_explorer/bus/backends.py`.
+Adapter labels/defaults live in `BACKENDS` in `src/signal_explorer/bus/backends.py`.
+Shared CAN vendor policy lives in `bus/strategies.py`: register a strategy for
+the python-can interface and add its `BackendSpec` to the catalog. Strategies
+define capability ceilings, FD/timing options, channel/handle routing, clock
+source, TX-report support and connection hooks. Discovered channel capabilities
+still restrict what the selected hardware can do. Native enumeration, silent
+setup and health APIs remain separate driver implementations. See
+[adapter development](docs/adapters.md) for the integration and test steps.
 
 ## Live monitor and transmit
+
+Use **Trace > Timestamp format** for CAN/CAN FD epoch seconds (default),
+readable UTC date/time, time relative to connection start, delta from the
+previous monitored frame, or delta for the same channel/message ID/format.
+Filtering does not change interval values. Relative time continues through
+monitor pauses and Clear; reconnect resets its origin. These are display-only
+options: recorded timestamps and playback timing are unchanged. See
+[CAN timestamp display](docs/timestamps.md#trace-timestamp-display) for exact
+pause, Clear, multichannel and first-frame behavior.
 
 CAN/CAN FD trace updates are batched for busy buses. If the display queue
 overflows, **Display drops** reports the discarded display observations; logging
@@ -340,6 +376,14 @@ acknowledgement or bus load.
 
 ## MDF4 raw bus logging and TX playback
 
+Open **Timing > Replay timing...** for scheduler/send-call/return measurements,
+CPU accounting and **Copy timing report**. Balanced (default) uses an interruptible
+high-resolution Windows timer without busy-waiting, with a portable condition
+fallback. Optional Precision checks the final 0.5 ms and may increase CPU use.
+The setting applies to CAN/LIN/Ethernet and File Viewer replay. These are host
+measurements, not wire timing or ECU-delivery guarantees. See
+[replay timing](docs/recording.md#replay-timing-measurements-and-waiting-policy).
+
 Install/update the new dependencies with:
 
 ```powershell
@@ -396,9 +440,16 @@ of a conversation, including duplicate observations; use direction selection
 when you only want one side.
 
 Raw events enter a bounded 100,000-event queue from the receive/send threads;
-MDF writing and finalization happen off the UI thread. Overflow or write failure
-stops logging explicitly and marks a finalized partial log incomplete. Invalid
-or backwards timestamps are corrected to maintain a chronological stream and
+MDF writing and finalization happen off the UI thread. Choose the overflow policy
+before starting a log: **Stop on overflow** (default) stops accepting new events
+and drains the queued data; **Continue with loss reporting** drops incoming
+events only while the queue is full and resumes capture as space becomes
+available. The live logger shows dropped-event counts and marks the recording
+incomplete. Both modes save loss counts, RX/TX breakdown and first/last dropped
+timestamps in `SignalExplorer-session.json`. These counts cover recorder queue
+loss, not device/driver/display losses or traffic after logging stops. A warning
+is shown once on finalization. Disk/write failures always stop logging.
+Invalid or backwards timestamps are corrected to maintain a chronological stream and
 the number of corrections is recorded. Temporary files are under the OS temp
 folder `signal-explorer-recordings`; they are not guaranteed crash/power-loss
 recovery files and may be removed by OS cleanup. Normal save cancellation keeps
