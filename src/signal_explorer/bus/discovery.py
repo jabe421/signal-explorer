@@ -111,3 +111,48 @@ def discover_channels(interface):
     except Exception as exc:
         return [], f"Device scan failed: {exc}"
     return [], ""
+
+
+def scan_can_adapters():
+    """Inventory supported CAN interfaces without opening a CAN session."""
+    from signal_explorer.bus.backends import BACKENDS
+
+    results = {}
+    for spec in BACKENDS:
+        if spec.interface == "virtual":
+            continue
+        try:
+            if spec.needs_serial:
+                from serial.tools.list_ports import comports
+                options = [
+                    ChannelOption(f"{port.device} — {port.description}", {"channel": port.device})
+                    for port in comports()
+                    if any(marker in (port.description or "").casefold() for marker in ("canable", "slcan"))
+                    or (port.vid, port.pid) == (0x16D0, 0x117E)
+                ]
+                results[spec.key] = (options, "Only identified CAN serial ports are listed here.")
+            elif spec.interface == "gs_usb":
+                from gs_usb.gs_usb import GsUsb
+                from usb import core
+                from usb.backend import libusb1
+                devices = core.find(find_all=True, custom_match=GsUsb.is_gs_usb_device,
+                                    backend=libusb1.get_backend())
+                options = [
+                    ChannelOption(f"candleLight / gs_usb | USB {device.bus}:{device.address}",
+                                  {"channel": index, "usb_bus": device.bus, "usb_address": device.address,
+                                   "device_name": f"USB {device.bus}:{device.address}"})
+                    for index, device in enumerate(devices)
+                ]
+                results[spec.key] = (options, "")
+            else:
+                options, note = discover_channels(spec.interface)
+                if spec.interface in {"vector", "kvaser"}:
+                    physical = [option for option in options
+                                if "virtual" not in option.label.casefold()]
+                    if len(physical) != len(options):
+                        note = f"{len(physical)} physical CAN channels detected."
+                    options = physical
+                results[spec.key] = (options, note)
+        except Exception as exc:
+            results[spec.key] = ([], f"Device scan unavailable: {exc}")
+    return results

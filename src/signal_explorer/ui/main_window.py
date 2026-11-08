@@ -1,6 +1,8 @@
 from __future__ import annotations
 import logging
 import os
+from queue import Empty, SimpleQueue
+from threading import Thread
 
 from signal_explorer import DEVELOPMENT_VERSION
 
@@ -8,7 +10,7 @@ from PySide6.QtCore import QByteArray, QSettings, QTimer, Qt
 from PySide6.QtGui import QAction, QActionGroup
 from signal_explorer.ui.adapter_preferences import AdapterPreference, CanChannelPreferences, can_channel_key, can_device_key
 from pathlib import Path
-from signal_explorer.bus.discovery import discover_channels
+from signal_explorer.bus.discovery import discover_channels, scan_can_adapters
 from signal_explorer.ui.can_channels import CanChannelsDialog, device_key, channel_label
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -19,6 +21,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QPushButton,
     QStatusBar,
@@ -100,7 +103,7 @@ class MainWindow(QMainWindow):
     _CAN_LAYOUT_KEY = "ui/can_tool_layout_with_graph"
     _CAN_TRACE_WIDTHS_KEY = "ui/can_trace_column_widths"
 
-    def __init__(self) -> None:
+    def __init__(self, *, auto_discover=False) -> None:
         super().__init__()
         from signal_explorer.diagnostics import installed_build_info
 
@@ -142,6 +145,14 @@ class MainWindow(QMainWindow):
         self._tx_timer.setTimerType(Qt.TimerType.PreciseTimer)
         self._tx_timer.timeout.connect(self._send_repeated_message)
         self._adapter_preference = AdapterPreference("can")
+        self._auto_discover = auto_discover
+        self._can_inventory = {}
+        self._can_scan_results = SimpleQueue()
+        self._can_scan_pending = False
+        self._can_scan_poll = QTimer(self, interval=100)
+        self._can_scan_poll.timeout.connect(self._finish_can_scan)
+        self._can_hotplug = QTimer(self, interval=350, singleShot=True)
+        self._can_hotplug.timeout.connect(self._scan_can_devices)
         self._build()
         self._counts_dirty = False
         self._display_drop_base = 0
@@ -156,6 +167,8 @@ class MainWindow(QMainWindow):
         self._backend.blockSignals(False)
         self._apply_backend(self._current_backend())
         self._build_can_docks()
+        if auto_discover:
+            self._can_hotplug.start(0)
 
     def _build(self) -> None:
         scripts = self.menuBar().addMenu('File Viewer')
@@ -264,8 +277,13 @@ class MainWindow(QMainWindow):
         self._explore.clicked.connect(self._toggle_exploring)
         bar.addWidget(self._explore)
         self._refresh = QPushButton("Refresh devices")
-        self._refresh.clicked.connect(lambda: self._apply_backend(self._current_backend()))
+        self._refresh.clicked.connect(self._refresh_can_devices)
         bar.addWidget(self._refresh)
+        self._detected_can = QPushButton("Detected devices")
+        self._detected_can_menu = QMenu(self._detected_can)
+        self._detected_can.setMenu(self._detected_can_menu)
+        self._populate_can_devices()
+        bar.addWidget(self._detected_can)
         self._vector_dll = QPushButton("Vector DLL")
         self._vector_dll.clicked.connect(self._choose_vector_dll)
         bar.addWidget(self._vector_dll)
@@ -451,7 +469,7 @@ class MainWindow(QMainWindow):
                 return spec
         return BACKENDS[0]
 
-    def _fill_channel(self, spec: BackendSpec) -> None:
+    def _fill_channel(self, spec: BackendSpec, preferred_device=None) -> None:
         self._channel.blockSignals(True)
         self._channel.clear()
         self._discovery_note = ""
@@ -463,32 +481,129 @@ class MainWindow(QMainWindow):
             ports = list_serial_ports()
             for device, description in ports:
                 self._channel.addItem(f"{device} — {description}", device)
-            preferred = preferred_slcan_port() or spec.default_channel
+            preferred = (preferred_device or CanChannelPreferences(spec.interface).last_device()
+                         or preferred_slcan_port() or spec.default_channel)
             match = self._channel.findData(preferred)
             if match < 0:
                 self._channel.setEditText(preferred)
             else:
                 self._channel.setCurrentIndex(match)
-        elif strategy_for(spec.interface).enumerates_channels:
-            options, self._discovery_note = discover_channels(spec.interface)
+        elif strategy_for(spec.interface).enumerates_channels or spec.interface == "gs_usb":
+            if spec.key in self._can_inventory:
+                options, self._discovery_note = self._can_inventory[spec.key]
+            elif self._auto_discover:
+                options, self._discovery_note = [], "Use Detected devices to check the CAN adapter inventory."
+            else:
+                options, self._discovery_note = discover_channels(spec.interface)
             self._channel_options = options
             for option in options:
                 self._channel.addItem(option.label, option.config)
             preferences = CanChannelPreferences(spec.interface)
-            preferred_device = preferences.last_device()
-            index = next((i for i, option in enumerate(options) if device_key(option) == preferred_device), 0)
-            if options:
+            preferred_device = preferred_device or preferences.last_device()
+            index = next((i for i, option in enumerate(options) if device_key(option) == preferred_device), -1)
+            if index < 0 and options and (not self._auto_discover or not preferred_device):
+                index = 0
+            if index >= 0:
                 self._channel.setCurrentIndex(index)
                 self._restore_enabled_channels(options[index])
-            if not options:
+            else:
+                self._channel.setCurrentIndex(-1)
                 self._channel.setEditText(spec.default_channel)
+                if self._auto_discover and preferred_device:
+                    self._saved_channels_unavailable = True
+                    self._discovery_note += f" Last-used device {preferred_device} is unavailable."
         else:
             self._channel.addItem(spec.default_channel, spec.default_channel)
             self._channel.setEditText(spec.default_channel)
         self._channel.blockSignals(False)
         self._channel.lineEdit().setCursorPosition(0)
         self._channel.setToolTip(self._channel.currentText())
-        self._channels_button.setEnabled(bool(self._channel_options))
+        self._channels_button.setEnabled(bool(self._channel_options) and spec.interface != "gs_usb")
+
+    def nativeEvent(self, event_type, message):
+        if os.name == "nt" and getattr(self, "_auto_discover", False):
+            from ctypes.wintypes import MSG
+
+            event = MSG.from_address(int(message))
+            if event.message == 0x0219 and event.wParam in (7, 0x8000, 0x8004):
+                self._can_hotplug.start()
+        return super().nativeEvent(event_type, message)
+
+    def _scan_can_devices(self):
+        if (self._can_scan_poll.isActive() or self._timing_scan_busy or self._service.busy
+                or (self._service.is_connected and self._current_backend().interface != "virtual")):
+            self._can_scan_pending = True
+            return
+        self._can_scan_pending = False
+        self._refresh.setText("Scanning devices…")
+        self._populate_can_devices(scanning=True)
+        self._can_scan_poll.start()
+        Thread(target=lambda: self._can_scan_results.put(scan_can_adapters()),
+               name="can-device-discovery", daemon=True).start()
+
+    def _refresh_can_devices(self):
+        if self._auto_discover:
+            self._scan_can_devices()
+        else:
+            self._apply_backend(self._current_backend())
+
+    def _finish_can_scan(self):
+        try:
+            self._can_inventory = self._can_scan_results.get_nowait()
+        except Empty:
+            return
+        self._can_scan_poll.stop()
+        self._refresh.setText("Refresh devices")
+        self._populate_can_devices()
+        if not self._service.is_connected and not self._service.busy and not self._timing_scan_busy:
+            spec = self._current_backend()
+            selected = self._channel.currentData()
+            text = self._channel.currentText()
+            port = selected if text == self._channel.itemText(self._channel.currentIndex()) else text
+            if isinstance(selected, dict) or text == spec.default_channel or spec.needs_serial:
+                self._apply_backend(spec)
+                if spec.needs_serial and port:
+                    index = self._channel.findData(port)
+                    if index < 0:
+                        self._channel.setEditText(port)
+                    else:
+                        self._channel.setCurrentIndex(index)
+        if self._can_scan_pending:
+            self._can_hotplug.start()
+
+    def _populate_can_devices(self, *, scanning=False):
+        menu = self._detected_can_menu
+        menu.clear()
+        count = 0
+        for spec in sorted(BACKENDS, key=lambda backend: backend.label.casefold()):
+            groups = {}
+            for option in self._can_inventory.get(spec.key, ([], ""))[0]:
+                key = option.config["channel"] if spec.needs_serial else device_key(option)
+                groups.setdefault(key, []).append(option)
+            for key, options in groups.items():
+                label = options[0].label
+                if len(options) > 1:
+                    label += f" (+{len(options) - 1} CAN channels)"
+                action = menu.addAction(label)
+                action.triggered.connect(lambda checked=False, spec=spec, key=key:
+                                         self._select_discovered_can(spec, key))
+                count += 1
+        if not count or scanning:
+            label = ("Scanning…" if scanning else "No supported CAN devices found"
+                     if self._can_inventory else "No device scan yet")
+            menu.addAction(label).setEnabled(False)
+        menu.addSeparator()
+        menu.addAction("Refresh devices", self._scan_can_devices)
+
+    def _select_discovered_can(self, spec, key):
+        if self._service.is_connected or self._service.busy or self._timing_scan_busy:
+            return
+        self._backend.blockSignals(True)
+        self._backend.setCurrentIndex(self._backend.findData(spec.key))
+        self._backend.blockSignals(False)
+        self._adapter_preference.save(spec.key)
+        CanChannelPreferences(spec.interface).remember_device(key)
+        self._apply_backend(spec, key)
 
     def _restore_enabled_channels(self, option):
         saved = CanChannelPreferences(self._current_backend().interface).channels(device_key(option))
@@ -628,10 +743,10 @@ class MainWindow(QMainWindow):
             return data
         return self._channel.currentText().split("—")[0].strip()
 
-    def _apply_backend(self, spec: BackendSpec) -> None:
+    def _apply_backend(self, spec: BackendSpec, preferred_device=None) -> None:
         if self._timing_scan_busy:
             return
-        self._fill_channel(spec)
+        self._fill_channel(spec, preferred_device)
         self._notes.setText(spec.notes + " " + self._discovery_note)
         self._vector_dll.setVisible(spec.interface == "vector")
         virtual = spec.interface == "virtual"
@@ -669,8 +784,11 @@ class MainWindow(QMainWindow):
             self._service.disconnect_async()
             return
         spec = self._current_backend()
+        if spec.interface != "virtual" and self._can_scan_poll.isActive():
+            self._status.setText("Wait for the device scan to finish before connecting.")
+            return
         if self._saved_channels_unavailable:
-            QMessageBox.warning(self, 'CAN channels', 'The saved CAN channels are unavailable. Use Enable channels to choose available channels before connecting.')
+            QMessageBox.warning(self, 'CAN channels', 'The last-used device or its saved channels are unavailable. Select an available device or channel before connecting.')
             return
         bitrate = int(self._bitrate.currentData())
         channel = self._channel_value()
@@ -708,6 +826,8 @@ class MainWindow(QMainWindow):
                 preferences.save(device_key(option), [selected])
             else:
                 preferences.remember_device(device_key(option))
+        elif self._current_backend().needs_serial:
+            CanChannelPreferences(self._current_backend().interface).remember_device(self._channel_value())
         self._channels_button.setEnabled(False)
         self._tx_channel.blockSignals(True)
         self._tx_channel.clear()
@@ -720,6 +840,7 @@ class MainWindow(QMainWindow):
         self._explore.setEnabled(True)
         self._set_exploring(True)
         self._refresh.setEnabled(False)
+        self._detected_can.setEnabled(False)
         self._vector_dll.setEnabled(False)
         self._send.setEnabled(self._service.can_send)
         self._connect.setText("Disconnect")
@@ -734,7 +855,7 @@ class MainWindow(QMainWindow):
         if state in ('connecting', 'cancelling', 'disconnecting'):
             for widget in (self._backend,self._channel,self._channels_button,self._bitrate,self._fd,
                            self._data_bitrate,self._listen_only,self._driver_tx_reports,self._termination,
-                           self._refresh,self._vector_dll,self._demo,self._send):
+                           self._refresh,self._detected_can,self._vector_dll,self._demo,self._send):
                 widget.setEnabled(False)
             self._connect.setText('Connecting… (Cancel)' if state=='connecting' else 'Waiting for driver…')
             self._connect.setEnabled(state=='connecting')
@@ -752,6 +873,7 @@ class MainWindow(QMainWindow):
         self._explore.setEnabled(False)
         self._stop_repeated_send()
         self._refresh.setEnabled(True)
+        self._detected_can.setEnabled(True)
         self._vector_dll.setEnabled(True)
         self._send.setEnabled(False)
         self._connect.setText("Connect")
@@ -760,6 +882,7 @@ class MainWindow(QMainWindow):
         self._apply_backend(self._current_backend())
         self._status.setText("Disconnected")
         if self._close_after_disconnect: QTimer.singleShot(0, self.close)
+        elif self._auto_discover or self._can_scan_pending: self._can_hotplug.start()
 
     def _on_message(self, msg) -> None:
         # Compatibility for explicit single-frame UI callers; service delivery
@@ -1133,6 +1256,8 @@ class MainWindow(QMainWindow):
         self._lin.service.disconnect_bus()
         self._ethernet.service.disconnect_bus()
         self._counts_timer.stop()
+        self._can_hotplug.stop()
+        self._can_scan_poll.stop()
         if self._timing_window is not None:
             self._timing_window.close()
         settings = QSettings()
@@ -1189,10 +1314,12 @@ class MainWindow(QMainWindow):
 
     def _timing_scan_changed(self, busy):
         self._timing_scan_busy = busy
-        for widget in (self._connect,self._backend,self._channel,self._refresh,self._vector_dll,self._demo):
+        for widget in (self._connect,self._backend,self._channel,self._refresh,self._detected_can,self._vector_dll,self._demo):
             widget.setEnabled(not busy)
-        self._channels_button.setEnabled(not busy and bool(self._channel_options))
+        self._channels_button.setEnabled(not busy and bool(self._channel_options)
+                                         and self._current_backend().interface != "gs_usb")
         self._bitrate.setEnabled(not busy and self._timing_settings.get(self._current_backend().interface) is None and self._current_backend().interface != 'virtual')
         self._sync_fd_controls(); self._sync_ni_controls()
         if busy: self._termination.setEnabled(False)
+        elif self._can_scan_pending: self._can_hotplug.start()
         self._demo.setEnabled(not busy and self._current_backend().interface == 'virtual')

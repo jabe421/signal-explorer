@@ -27,7 +27,7 @@ def main() -> int:
         # the expensive part of startup as well as main-window construction.
         from signal_explorer.ui.main_window import MainWindow
 
-        window = MainWindow()
+        window = MainWindow(auto_discover=True)
         window.show()
         splash.finish(window)
     finally:

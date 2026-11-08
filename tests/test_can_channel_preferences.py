@@ -4,7 +4,7 @@ from unittest.mock import Mock, patch
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 from signal_explorer.bus.discovery import ChannelOption
-from signal_explorer.ui.adapter_preferences import CanChannelPreferences
+from signal_explorer.ui.adapter_preferences import AdapterPreference, CanChannelPreferences
 from signal_explorer.ui.can_channels import CanChannelsDialog
 from signal_explorer.ui.main_window import MainWindow
 from test_multichannel import LoopBus, wait_for
@@ -22,6 +22,47 @@ def choose(window, selected):
     dialog=Mock();dialog.exec.return_value=True;dialog.selected_configs=[o.config for o in selected]
     with patch('signal_explorer.ui.main_window.CanChannelsDialog',return_value=dialog):
         window._choose_can_channels()
+
+
+def test_background_inventory_selects_device_and_preserves_it_when_unplugged(monkeypatch):
+    vector = options()
+    intrepid = ChannelOption("ValueCAN4 | 456 | CAN1", {"channel": "HSCAN", "serial": 456})
+    inventory = {"vector": (vector, "Vector detected"), "ics_neovi": ([intrepid], "")}
+    scan = Mock(side_effect=lambda: dict(inventory))
+    monkeypatch.setattr("signal_explorer.ui.main_window.scan_can_adapters", scan)
+    AdapterPreference("can").save("vector")
+    CanChannelPreferences("vector").save("123", [vector[1].config])
+    window = MainWindow(auto_discover=True)
+    connect = Mock()
+    monkeypatch.setattr(window._service, "connect_async", connect)
+    try:
+        assert wait_for(lambda: bool(window._can_inventory))
+        assert window._current_backend().key == "vector"
+        assert [channel["channel"] for channel in window._enabled_can_configs] == [1]
+        devices = window._detected_can_menu.actions()
+        assert sum(action.text().startswith("VN1630A") for action in devices) == 1
+        next(action for action in devices if action.text().startswith("ValueCAN4")).trigger()
+        assert window._current_backend().key == "ics_neovi"
+        assert window._channel.currentData() == intrepid.config
+        connect.assert_not_called()
+
+        inventory.update(vector=([], ""), ics_neovi=([], ""))
+        window._refresh.click()
+        assert wait_for(lambda: "No supported" in window._detected_can_menu.actions()[0].text())
+        assert window._current_backend().key == "ics_neovi"
+        assert CanChannelPreferences("neovi").last_device() == "456"
+        assert window._saved_channels_unavailable
+        assert "456" in window._notes.text()
+        connect.assert_not_called()
+
+        inventory["ics_neovi"] = ([intrepid], "")
+        window._refresh.click()
+        assert wait_for(lambda: window._channel.currentData() == intrepid.config)
+        window._connect.click()
+        connect.assert_called_once()
+        assert connect.call_args.kwargs["device_config"] == intrepid.config
+    finally:
+        window.close()
 
 
 def test_subset_survives_disconnect_refresh_and_relaunch_without_connecting():

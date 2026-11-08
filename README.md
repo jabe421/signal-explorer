@@ -76,8 +76,12 @@ with its virtual adapter on first launch, then remembers the last selected adapt
 on this Windows user profile. Restoring a selection never connects automatically.
 CAN/LIN remember the backend family; Ethernet remembers the actual NIC/device
 identity across refreshes. An unavailable Ethernet choice falls back to simulation
-without replacing the saved preference. Refresh discovers available hardware; it
-does not select an arbitrary connected adapter over your saved choice.
+without replacing the saved preference. On the CAN tab, **Detected devices**
+lists adapters found by a background startup scan and refreshed on Windows
+hardware changes. Choose a device to restore its saved channels, then click
+**Connect** when ready. If the scan finds nothing, the last-used adapter stays
+selected. Use **Refresh devices** to scan manually. Scans wait until an active
+physical CAN connection or bitrate scan finishes.
 
 | Adapter | python-can interface | Extra software |
 | --- | --- | --- |

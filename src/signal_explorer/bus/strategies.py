@@ -104,6 +104,13 @@ class VirtualStrategy(BackendStrategy):
         return can.Bus(**kwargs)
 
 
+class GsUsbStrategy(IntegerChannelStrategy):
+    def prepare_connection(self, kwargs, bitrate, driver_tx_reports, config):
+        super().prepare_connection(kwargs, bitrate, driver_tx_reports, config)
+        if config.get("usb_bus") is not None and config.get("usb_address") is not None:
+            kwargs.update(bus=config["usb_bus"], address=config["usb_address"])
+
+
 class SlcanStrategy(BackendStrategy):
     timestamp_source = "host_receipt"
 
@@ -237,7 +244,7 @@ class NiStrategy(BackendStrategy):
 STRATEGIES = {
     "virtual": VirtualStrategy(),
     "slcan": SlcanStrategy(),
-    "gs_usb": IntegerChannelStrategy(),
+    "gs_usb": GsUsbStrategy(),
     "vector": VectorStrategy(),
     "neovi": IntrepidStrategy(),
     "kvaser": KvaserStrategy(),
