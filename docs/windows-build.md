@@ -5,6 +5,22 @@ tests and packages Windows x64 using Python 3.12, PyInstaller and Inno Setup.
 It uploads a downloadable build artifact; it does not publish a GitHub Release,
 create a tag, or upload anything on an ordinary source push.
 
+## In-app updates
+
+Starting with `0.3.0-beta.2`, open **Help → Check for Updates** in the installed
+Windows app. Select **Include beta releases** to receive prerelease offers.
+**Download and Install** verifies the installer against GitHub's published
+SHA-256 digest, then uses the normal app close flow before opening Windows Setup.
+Choose **Later** to keep working, or cancel a save prompt to stop the update.
+Windows asks for administrator approval to run Setup.
+
+For each release, use the same version in the workflow input and GitHub release
+tag, such as `0.3.0-beta.2` and `v0.3.0-beta.2`. Attach
+`SignalExplorer-Setup-0.3.0-beta.2-windows-x64.exe` directly to the published
+GitHub Release. Keep the versioned filename and publish beta builds as prereleases.
+Users on beta.1 install beta.2 manually. To validate the updater end to end,
+install an updater-enabled build and check against a newer published installer.
+
 ## First-time setup: put the workflow on GitHub
 
 These project changes must reach the repository's default branch, currently

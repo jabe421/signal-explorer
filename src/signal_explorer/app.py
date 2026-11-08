@@ -5,7 +5,7 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QIcon, QPixmap
-from PySide6.QtWidgets import QApplication, QSplashScreen
+from PySide6.QtWidgets import QApplication, QMessageBox, QSplashScreen
 
 
 def main() -> int:
@@ -32,4 +32,13 @@ def main() -> int:
         splash.finish(window)
     finally:
         splash.close()
-    return app.exec()
+    result = app.exec()
+    if window.installer_on_exit is not None:
+        from signal_explorer.updates import discard_installer, launch_installer
+
+        try:
+            launch_installer(window.installer_on_exit)
+        except OSError as exc:
+            discard_installer(window.installer_on_exit)
+            QMessageBox.warning(None, "Signal Explorer update", str(exc))
+    return result

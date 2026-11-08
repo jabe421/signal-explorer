@@ -114,6 +114,9 @@ class MainWindow(QMainWindow):
         self._timing_window = None
         self._replay_timing_window = None
         self._diagnostics_window = None
+        self._update_dialog = None
+        self._pending_update = None
+        self.installer_on_exit = None
         self._timing_scan_busy = False
         self._timing_settings = {}
 
@@ -171,6 +174,7 @@ class MainWindow(QMainWindow):
         self._view_menu = self.menuBar().addMenu('View')
         help_menu = self.menuBar().addMenu('Help')
         help_menu.addAction('Diagnostics...').triggered.connect(self._open_diagnostics)
+        help_menu.addAction('Check for Updates...').triggered.connect(self._check_for_updates)
         self._backend = QComboBox()
         for spec in sorted(BACKENDS, key=lambda spec: spec.label.casefold()):
             self._backend.addItem(spec.label, spec.key)
@@ -1008,7 +1012,44 @@ class MainWindow(QMainWindow):
         self._diagnostics_window.raise_()
         self._diagnostics_window.activateWindow()
 
+    def _check_for_updates(self):
+        if self._pending_update is not None:
+            return
+        from signal_explorer.diagnostics import installed_build_info
+        from signal_explorer.ui.update_dialog import UpdateDialog
+
+        version = installed_build_info().get("version")
+        if os.name != "nt" or not version:
+            QMessageBox.information(self, "Check for Updates",
+                                    "Updates are available from the installed Windows release.")
+            return
+        if self._update_dialog is None:
+            self._update_dialog = UpdateDialog(version, self._install_update, self)
+        self._update_dialog.show()
+        self._update_dialog.raise_()
+        self._update_dialog.check()
+
+    def _install_update(self, path):
+        self._pending_update = path
+        self.close()
+
     def closeEvent(self, event) -> None:  # noqa: N802
+        if self._update_dialog is not None and self._update_dialog.busy:
+            self._update_dialog.raise_()
+            event.ignore()
+            return
+        self._close_main(event)
+        if event.isAccepted():
+            self.installer_on_exit = self._pending_update
+            self._pending_update = None
+            if self._update_dialog is not None:
+                self._update_dialog.close()
+        elif self._pending_update is not None and not self._close_after_disconnect:
+            from signal_explorer.updates import discard_installer
+            discard_installer(self._pending_update)
+            self._pending_update = None
+
+    def _close_main(self, event):
         if self._service.busy:
             self._close_after_disconnect = True
             self._service.cancel_connect()
