@@ -2,13 +2,14 @@ from pathlib import Path
 
 import can
 import cantools
+from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QApplication
 
 from signal_explorer.ui.main_window import MainWindow
 from signal_explorer.ui.signal_graph import SignalHistory
 
 
-def test_signal_graph_tabs_decode_live_frames_and_reset():
+def test_signal_graph_tabs_decode_live_frames_and_reset(monkeypatch):
     app = QApplication.instance() or QApplication([])
     window = MainWindow()
     window.show()
@@ -44,6 +45,19 @@ def test_signal_graph_tabs_decode_live_frames_and_reset():
         ])
         assert list(samples) == [(100, 10), (101, 20)]
         assert not graph.plot.grab().isNull()
+        palette = graph.plot.palette()
+        active = QPalette.ColorGroup.Active
+        inactive = QPalette.ColorGroup.Inactive
+        for role in (QPalette.ColorRole.Base, QPalette.ColorRole.Text, QPalette.ColorRole.Mid):
+            palette.setColor(inactive, role, palette.color(active, role))
+        palette.setColor(active, QPalette.ColorRole.Highlight, QColor("blue"))
+        palette.setColor(inactive, QPalette.ColorRole.Highlight, QColor("white"))
+        with monkeypatch.context() as patch:
+            patch.setattr(graph.plot, "palette", lambda: palette)
+            palette.setCurrentColorGroup(active)
+            active_plot = graph.plot.grab().toImage()
+            palette.setCurrentColorGroup(inactive)
+            assert graph.plot.grab().toImage() == active_plot
 
         window._open_bus_health()
         assert graph_dock in window.tabifiedDockWidgets(health_dock)

@@ -72,6 +72,12 @@ def _scrollable(content):
     return scroll
 
 
+class WorkspaceLayout(QVBoxLayout):
+    def hasHeightForWidth(self):
+        # Let the trace absorb vertical resizing even when the workspace scrolls horizontally.
+        return False
+
+
 class CanToolDock(QDockWidget):
     def __init__(self, title, content, parent):
         super().__init__(title, parent)
@@ -322,7 +328,8 @@ class MainWindow(QMainWindow):
         self._auto_scroll.toggled.connect(self._toggle_trace_mode)
         filters.addWidget(self._auto_scroll)
         root.addLayout(filters)
-        root.addWidget(self._table)
+        self._table.setMinimumHeight(48)
+        root.addWidget(self._table, 1)
 
         send_bar = QHBoxLayout()
         self._tx_id = QLineEdit("100")
@@ -368,13 +375,18 @@ class MainWindow(QMainWindow):
         self._tabs.addTab(container, "CAN / CAN FD")
         self._tabs.addTab(self._lin, "LIN")
         self._tabs.addTab(self._ethernet, "Ethernet")
+        self._protocol_page_policies = [
+            (page, page.sizePolicy().verticalPolicy())
+            for page in (container, self._lin, self._ethernet)
+        ]
+        self._fit_protocol_page(0)
         can_adapter_widget = QWidget(); can_adapter_widget.setLayout(bar)
         self._adapter_stack = QStackedWidget()
         self._adapter_stack.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self._adapter_stack.addWidget(can_adapter_widget)
         self._adapter_stack.addWidget(self._lin.adapter_widget)
         self._adapter_stack.addWidget(self._ethernet.adapter_widget)
-        outer = QWidget(); outer_layout = QVBoxLayout(outer)
+        outer = QWidget(); outer_layout = WorkspaceLayout(outer)
         outer_layout.addWidget(self._adapter_stack); outer_layout.addWidget(self._tabs, 1)
         self._tabs.currentChanged.connect(self._protocol_tab_changed)
         self.setCentralWidget(_scrollable(outer))
@@ -392,8 +404,16 @@ class MainWindow(QMainWindow):
 
     def _protocol_tab_changed(self, index):
         self._adapter_stack.setCurrentIndex(index)
+        self._fit_protocol_page(index)
         self._status.setVisible(index == 0)
         self._count.setVisible(index == 0)
+
+    def _fit_protocol_page(self, active_index):
+        # Hidden protocol pages must not set the visible page's minimum height.
+        for index, (page, default_policy) in enumerate(self._protocol_page_policies):
+            policy = page.sizePolicy()
+            policy.setVerticalPolicy(default_policy if index == active_index else QSizePolicy.Policy.Ignored)
+            page.setSizePolicy(policy)
 
     def _open_script(self, path=None, new=False):
         window=ScriptWindow(self._script_controller,self)

@@ -3,7 +3,7 @@ from math import floor, isfinite
 
 from cantools.database.errors import DecodeError
 from PySide6.QtCore import QPointF, QRectF, QTimer, Qt
-from PySide6.QtGui import QPainter, QPainterPath
+from PySide6.QtGui import QPainter, QPainterPath, QPalette
 from PySide6.QtWidgets import (
     QComboBox, QFormLayout, QHBoxLayout, QLabel, QListWidget, QPushButton,
     QScrollArea, QSizePolicy, QVBoxLayout, QWidget,
@@ -59,6 +59,8 @@ class SignalPlot(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         palette = self.palette()
+        # A live trace uses the theme accent even when the window loses focus.
+        trace_color = palette.color(QPalette.ColorGroup.Active, QPalette.ColorRole.Highlight)
         painter.fillRect(self.rect(), palette.base())
         painter.setPen(palette.text().color())
         graph = self.graph
@@ -102,7 +104,7 @@ class SignalPlot(QWidget):
                     path.moveTo(x, y)
                 else:
                     path.lineTo(x, y)
-            painter.setPen(palette.highlight().color())
+            painter.setPen(trace_color)
             painter.drawPath(path)
             painter.drawEllipse(path.currentPosition(), 2.5, 2.5)
 

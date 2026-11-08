@@ -61,3 +61,26 @@ def test_visible_docks_allow_main_window_to_fit_smaller_screen():
         assert isinstance(window._transmit_dock.widget(), QScrollArea)
     finally:
         window.close()
+
+
+def test_resizing_sender_dock_shrinks_trace_and_keeps_logger_visible():
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+    window.resize(1024, 768)
+    window.show()
+    try:
+        window._open_transmit_window()
+        dock = window._transmit_dock
+        logger = window._recording_panel
+        viewport = window.centralWidget().viewport()
+        heights = []
+        for dock_height in (140, 330):
+            window.resizeDocks([dock], [dock_height], Qt.Orientation.Vertical)
+            app.processEvents()
+            heights.append(window._table.height())
+            logger_bounds = logger.rect().translated(logger.mapTo(viewport, logger.rect().topLeft()))
+            assert viewport.rect().contains(logger_bounds.topLeft())
+            assert logger_bounds.bottom() <= viewport.rect().bottom()
+        assert heights[1] < heights[0]
+    finally:
+        window.close()
