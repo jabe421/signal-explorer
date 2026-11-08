@@ -39,10 +39,16 @@ every adapter channel.
 
 CAN FD supports payload lengths 0-8, 12, 16, 20, 24, 32, 48 and 64. Connect with
 CAN FD enabled before sending FD frames; BRS uses the connection's data bitrate.
-The grid shows bytes 0-7. Select a row to edit its **Complete payload** below,
-including bytes 8-63. Change DLC first to resize a raw frame, then enter exactly
-that many bytes. Changing ID, format or DLC detaches a row's DBC definition and
-waveforms; raw payload editing of an unchanged layout keeps its definition.
+Change DLC to resize the payload in the grid. The numbered columns extend to the
+longest row, and each row can edit only the bytes within its own DLC. Use the
+horizontal scrollbar at the bottom of the grid to reach off-screen bytes.
+Double-click a byte cell or a numbered header to open the full payload editor.
+Paste the number of hex bytes shown in the row's DLC and press Enter to apply.
+If the length differs, correct the pasted text or close the editor with the X
+to discard it.
+Press F2 on a byte cell to edit that byte alone.
+Changing ID, format or DLC detaches a row's DBC definition and waveforms.
+Editing bytes without changing the layout keeps its DBC definition.
 
 ## Signal panel and generation
 
@@ -79,12 +85,10 @@ configuration; a frame already in progress may finish with its previous values.
 Counts continue across edits. A cycle-time change reschedules the next send using
 the new interval. Invalid edits leave the previous configuration running.
 
-Live data refresh pauses for the field you are typing in. Enter commits a table
-cell; leaving the full-payload field commits its text. Manually editing a signal
-turns off that signal's waveform, while other signal waveforms continue. Editing
-raw data bytes or the complete payload turns off the row's waveforms so they do
-not overwrite your manually entered data. Changing the message layout still
-detaches its DBC snapshot as described above.
+Live data refresh pauses for the cell you are typing in. Press Enter to commit
+the edit. Editing a signal turns off that signal's waveform, while other signal
+waveforms continue. Editing a raw byte turns off the row's waveforms to preserve
+the manually entered data.
 
 Turning Use or Cyclic back on does not restart sending automatically: press Start
 again. Loading a transmit list continues to stop existing schedules and never

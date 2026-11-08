@@ -6,7 +6,7 @@ import tempfile
 
 import cantools
 from signal_explorer.paths import save_path
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, Qt, Signal
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QTableWidget,
     QTableWidgetItem, QHeaderView, QPushButton, QComboBox, QLineEdit, QLabel, QSplitter,
@@ -44,6 +44,9 @@ class WaveformDialog(QDialog):
 
 
 class TransmitWindow(QMainWindow):
+    close_requested = Signal()
+    _BYTE_START = 11
+
     def __init__(self, service, database_provider=lambda: None, playback_busy=lambda: False, parent=None, *, embedded=False):
         super().__init__(parent, Qt.WindowType.Widget if embedded else Qt.WindowType.Window)
         self.service, self.database_provider, self.playback_busy = service, database_provider, playback_busy
@@ -51,12 +54,13 @@ class TransmitWindow(QMainWindow):
         self._dirty, self._syncing, self._path = False, False, None
         self._uids, self._rows, self._steps = [], {}, {}
         self._preview_was_busy = False
-        self._payload_dirty = False
         self.resize(1500,820)
         self._build()
+        if not embedded:
+            self.close_requested.connect(self.close)
         self.engine.changed.connect(self._changed)
         self.engine.progress.connect(self._refresh_status)
-        self.engine.failed.connect(self.status.setText)
+        self.engine.failed.connect(self._show_send_error)
         service.connected.connect(self._connection_changed)
         service.disconnected.connect(self._connection_changed)
         self._reload()
@@ -68,26 +72,25 @@ class TransmitWindow(QMainWindow):
                                         ('Save transmit list...',self.save,QKeySequence.StandardKey.Save)]:
             action=QAction(label,self);action.triggered.connect(callback);action.setShortcut(shortcut);menu.addAction(action)
             action.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
-        self.table=QTableWidget(0,21)
-        self.table.setHorizontalHeaderLabels(['Use','Message Name','ID (hex)','Channel','Ext','FD','BRS','DLC','Send','Cyclic','Cycle (ms)',
-                                              *[str(i) for i in range(8)],'Sent','Status'])
+        self.table=QTableWidget(0,self._BYTE_START)
+        self.table.setHorizontalHeaderLabels(['Use','Message Name','ID (hex)','Channel','Ext','FD','BRS','DLC','Send','Cyclic','Cycle (ms)'])
+        self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.table.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self.table.viewport().installEventFilter(self)
+        self.table.horizontalHeader().sectionDoubleClicked.connect(self._edit_payload_from_header)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.table.setAlternatingRowColors(True)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        for column,width in enumerate([36,170,85,105,38,38,38,48,70,48,90,*([37]*8),65,200]):
+        for column,width in enumerate([36,170,85,105,38,38,38,48,70,48,90]):
             self.table.setColumnWidth(column,width)
         self.table.itemChanged.connect(self._edit_cell)
         self.table.currentCellChanged.connect(lambda *_:self._show_signals())
         splitter=QSplitter(Qt.Orientation.Vertical);splitter.addWidget(self.table);layout.addWidget(splitter,1)
         lower=QWidget(); lower_layout=QVBoxLayout(lower)
-        self.message_label=QLabel('Select a message to edit its full payload or DBC signals.')
+        self.message_label=QLabel('Select a message to view its DBC signals.')
         self.message_label.setTextFormat(Qt.TextFormat.PlainText)
         lower_layout.addWidget(self.message_label)
-        payload_bar=QHBoxLayout();payload_bar.addWidget(QLabel('Complete payload (hex, including CAN FD bytes 8-63)'))
-        self.payload=QLineEdit();self.payload.editingFinished.connect(self._edit_payload)
-        self.payload.textEdited.connect(lambda _:setattr(self,'_payload_dirty',True));payload_bar.addWidget(self.payload,1)
-        lower_layout.addLayout(payload_bar)
         self.signals=QTableWidget(0,10)
         self.signals.setHorizontalHeaderLabels(['Signal Name','Start Bit','Bits','Raw Value','Physical Value','Unit','Step','Dec','Inc','Waveform'])
         self.signals.horizontalHeader().setStretchLastSection(True)
@@ -102,14 +105,18 @@ class TransmitWindow(QMainWindow):
         definitions=[('New Raw',self.add_raw),('New from DBC',self.add_dbc),('Clone',self.clone),('Delete',self.delete),
                      ('Open TX List',self.load),('Save TX List',self.save),('Send All Once',self.send_all),
                      ('Start Cyclic',self.start_cyclic),('Stop All',self.engine.stop_all)]
-        definitions += [('Help',self.help),('Close',self.close)]
+        definitions += [('Help',self.help),('Close',self.close_requested.emit)]
         for label,callback in definitions:
             button=QPushButton(label);button.clicked.connect(callback);buttons.addWidget(button)
         layout.addLayout(buttons)
-        self.status=QLabel('Connect CAN in the main window. Configure rows here, then use now/Start or the batch controls.')
+        self.status=QLabel()
         self.status.setTextFormat(Qt.TextFormat.PlainText)
         self.status.setWordWrap(True);layout.addWidget(self.status)
-        layout.addWidget(QLabel('Data columns show bytes 0-7. Cyclic schedules use best-effort PC timing. Closing this window stops its transmissions.'))
+        self.status.hide()
+
+    def _show_send_error(self, message):
+        self.status.setText(message)
+        self.status.show()
 
     def _try(self, callback):
         try: return callback()
@@ -123,9 +130,11 @@ class TransmitWindow(QMainWindow):
             'Choose a channel, payload and frame format for each row. The now button sends once. Check Cyclic, set Cycle (ms), '
             'and press Start for repeated sending. Use Stop or Stop All to stop. Use excludes unchecked rows from batch sending.\n\n'
             'Select a DBC row to edit numeric raw/physical signal values, increment/decrement them, or define a ramp, pulse or sine wave. '
-            'Edits apply to subsequent sends while a row runs. The complete payload field includes CAN FD bytes beyond byte 7.\n\n'
-            'Use Open TX List / Save TX List or the File menu. Opening a list never starts sending. Closing this window, disconnecting CAN or starting '
-            'logfile playback stops its scheduled transmissions; the main monitor and single sender stay available.')
+            'Edits apply to subsequent sends while a row runs. Change DLC to resize the payload and edit the bytes in the numbered columns. '
+            'Use the horizontal scrollbar to reach additional CAN FD bytes. Double-click a byte or its column number to paste a full payload. '
+            'Use F2 to edit a single byte.\n\n'
+            'Use Open TX List / Save TX List or the File menu. Opening a list never starts sending. Closing the panel keeps cyclic sends running. '
+            'Disconnecting CAN, starting logfile playback or exiting Signal Explorer stops scheduled transmissions.')
 
     def _selected(self):
         return [self._uids[index.row()] for index in self.table.selectionModel().selectedRows()]
@@ -133,6 +142,53 @@ class TransmitWindow(QMainWindow):
     def _current(self):
         row=self.table.currentRow()
         return self._uids[row] if 0 <= row < len(self._uids) else None
+
+    def eventFilter(self, watched, event):
+        if (event.type() == QEvent.Type.MouseButtonDblClick
+                and watched is self.table.viewport()
+                and event.button() == Qt.MouseButton.LeftButton):
+            index = self.table.indexAt(event.position().toPoint())
+            if index.isValid() and self._is_byte_column(index.column()):
+                self._edit_full_payload(self._uids[index.row()])
+                return True
+        return super().eventFilter(watched, event)
+
+    def _is_byte_column(self, column):
+        return self._BYTE_START <= column < self.table.columnCount() - 2
+
+    def _edit_payload_from_header(self, column):
+        uid = self._current()
+        if uid is not None and self._is_byte_column(column):
+            self._edit_full_payload(uid)
+
+    def _edit_full_payload(self, uid):
+        entry = self.engine.get(uid)
+        expected_length = len(entry.data)
+        dialog = QInputDialog(self)
+        dialog.setWindowFlag(Qt.WindowType.WindowCloseButtonHint, True)
+        dialog.setWindowTitle("Edit CAN payload")
+        dialog.setLabelText(
+            f"{entry.name} (ID {entry.identifier:X})\n"
+            f"Paste exactly {expected_length} hex bytes and press Enter."
+        )
+        dialog.setTextValue(self._edit_data(uid, entry).hex(" ").upper())
+        dialog.findChild(QLineEdit).selectAll()
+        dialog.resize(680, dialog.sizeHint().height())
+        try:
+            while dialog.exec():
+                try:
+                    data = bytes.fromhex(dialog.textValue())
+                    if len(data) != expected_length:
+                        raise ValueError(
+                            f"Expected {expected_length} bytes for this row's DLC. "
+                            f"You entered {len(data)} bytes."
+                        )
+                    self.engine.update(replace(entry, data=data, waves={}))
+                    return
+                except ValueError as exc:
+                    QMessageBox.warning(dialog, "Invalid payload", str(exc))
+        finally:
+            dialog.deleteLater()
 
     def _title(self):
         self.setWindowTitle('Send Messages - '+(self._path.name if self._path else 'Untitled')+(' *' if self._dirty else ''))
@@ -145,6 +201,9 @@ class TransmitWindow(QMainWindow):
 
     def _reload(self):
         current=self._current()
+        current_column = self.table.currentColumn()
+        scroll = self.table.horizontalScrollBar()
+        scroll_position = scroll.value()
         self._syncing=True
         try:
             # Qt defers destruction of replaced cell widgets; hide old controls
@@ -156,16 +215,27 @@ class TransmitWindow(QMainWindow):
                         widget.hide();widget.setParent(None)
                         self.table.removeCellWidget(row,column);widget.deleteLater()
             rows=self.engine.entries();self._uids=[e.uid for e in rows];self._rows={e.uid:e for e in rows}
+            byte_count = max((len(entry.data) for entry in rows), default=8)
+            sent_column = self._BYTE_START + byte_count
+            if self.table.columnCount() != sent_column + 2:
+                self.table.setColumnCount(sent_column + 2)
+                headings = [*(str(index) for index in range(byte_count)), 'Sent', 'Status']
+                for column, (heading, width) in enumerate(zip(headings, [37]*byte_count + [65, 200]), self._BYTE_START):
+                    self.table.setHorizontalHeaderItem(column, QTableWidgetItem(heading))
+                    self.table.setColumnWidth(column, width)
             self.table.setRowCount(len(rows))
             for row,entry in enumerate(rows):
-                for col in range(21):
+                for col in range(self.table.columnCount()):
                     text = (entry.name if col==1 else f'{entry.identifier:X}' if col==2 else str(len(entry.data)) if col==7
-                            else str(entry.period_ms) if col==10 else f'{entry.data[col-11]:02X}' if 11<=col<19 and col-11<len(entry.data) else '')
+                            else str(entry.period_ms) if col==10 else '')
+                    byte_index = col - self._BYTE_START
+                    if 0 <= byte_index < len(entry.data):
+                        text = f'{entry.data[byte_index]:02X}'
                     item=QTableWidgetItem(text)
                     if col in (0,4,5,6,9):
                         item.setFlags(Qt.ItemFlag.ItemIsEnabled|Qt.ItemFlag.ItemIsSelectable|Qt.ItemFlag.ItemIsUserCheckable)
                         item.setCheckState(Qt.CheckState.Checked if {0:entry.enabled,4:entry.extended,5:entry.fd,6:entry.brs,9:entry.cyclic}[col] else Qt.CheckState.Unchecked)
-                    elif col in (3,8,19,20) or (11<=col<19 and col-11>=len(entry.data)):
+                    elif col in (3,8) or byte_index >= len(entry.data):
                         item.setFlags(Qt.ItemFlag.ItemIsEnabled|Qt.ItemFlag.ItemIsSelectable)
                     self.table.setItem(row,col,item)
                 combo=QComboBox();combo.addItem('Default TX',None)
@@ -178,25 +248,32 @@ class TransmitWindow(QMainWindow):
                 self.table.setCellWidget(row,3,combo)
                 send=QPushButton();send.clicked.connect(lambda _,uid=entry.uid:self._send_row(uid));self.table.setCellWidget(row,8,send)
             index=self._uids.index(current) if current in self._uids else 0
-            if rows:self.table.setCurrentCell(index,1)
+            if rows:
+                column = min(current_column, self.table.columnCount()-1) if current in self._uids else 1
+                self.table.setCurrentCell(index,max(0,column))
+                scroll.setValue(scroll_position)
         finally:self._syncing=False
         self._title();self._refresh_status();self._show_signals()
 
     def _refresh_status(self):
         locked=self.playback_busy() or not self.service.can_send
+        sent_column = self.table.columnCount()-2
         self._syncing=True
         try:
             for row,uid in enumerate(self._uids):
                 count,running,pending,error=self.engine.state(uid);entry=self._rows[uid]
                 display=self.engine.last_data(uid) if running or pending else entry.data
-                for column in range(11,19):
-                    text=f'{display[column-11]:02X}' if column-11<len(display) else ''
+                if len(display) != len(entry.data):
+                    display = entry.data
+                for byte_index, value in enumerate(display):
+                    column = self._BYTE_START + byte_index
+                    text=f'{value:02X}'
                     if self._editing(self.table,row,column):continue
                     if self.table.item(row,column).text()!=text:self.table.item(row,column).setText(text)
-                self.table.item(row,19).setText(str(count))
-                self.table.item(row,20).setText(error or ('Cyclic' if running else 'Sending / stopping' if pending else 'Ready' if not locked else 'Disconnected / replay active'))
+                self.table.item(row,sent_column).setText(str(count))
+                self.table.item(row,sent_column+1).setText(error or ('Cyclic' if running else 'Sending / stopping' if pending else 'Ready' if not locked else 'Disconnected / replay active'))
                 diagnostics=self.engine.diagnostics(uid)
-                self.table.item(row,20).setToolTip((error+'\n' if error else '')+
+                self.table.item(row,sent_column+1).setToolTip((error+'\n' if error else '')+
                     f"Retries: {diagnostics['retries']} | Missed cycles: {diagnostics['missed_cycles']}")
                 button=self.table.cellWidget(row,8)
                 button.setText('Stop' if running else 'Start' if entry.cyclic else 'now')
@@ -204,10 +281,8 @@ class TransmitWindow(QMainWindow):
                 self.table.cellWidget(row,3).setEnabled(True)
             current=self._current()
             busy=current is not None and any(self.engine.state(current)[1:3])
-            self.payload.setReadOnly(False)
             if busy:
                 data=self.engine.last_data(current)
-                if not self.payload.hasFocus():self.payload.setText(data.hex(' ').upper())
                 definition=self._rows[current].definition
                 if definition:
                     try:
@@ -220,7 +295,7 @@ class TransmitWindow(QMainWindow):
                                 self.signals.item(row,3).setText(str(raw[name]));self.signals.item(row,4).setText(str(physical[name]))
                     except Exception as exc:self.signal_status.setText(f'Decode failed: {exc}')
         finally:self._syncing=False
-        if self._preview_was_busy and not busy and not self.payload.hasFocus() and self.signals.state()!=QAbstractItemView.State.EditingState:self._show_signals()
+        if self._preview_was_busy and not busy and self.signals.state()!=QAbstractItemView.State.EditingState:self._show_signals()
         self._preview_was_busy=busy
 
     @staticmethod
@@ -243,10 +318,10 @@ class TransmitWindow(QMainWindow):
                 if not 0<=length<=64:raise ValueError('Payload length must be 0-64 bytes.')
                 changes['data']=self._edit_data(uid,entry)[:length].ljust(length,b'\x00')
             elif col==10:changes['period_ms']=int(item.text())
-            elif 11<=col<19:
+            elif self._BYTE_START <= col < self._BYTE_START + len(entry.data):
                 data=bytearray(self._edit_data(uid,entry));value=int(item.text(),16)
                 if not 0<=value<=255:raise ValueError('A data byte must be 00-FF.')
-                data[col-11]=value;changes.update(data=bytes(data),waves={})
+                data[col-self._BYTE_START]=value;changes.update(data=bytes(data),waves={})
             else:return
             if col in (2,4,5,7) and any(getattr(entry,key)!=value for key,value in changes.items()):
                 changes.update(definition=None,waves={})
@@ -291,12 +366,11 @@ class TransmitWindow(QMainWindow):
                     if widget:
                         widget.hide();widget.setParent(None)
                         self.signals.removeCellWidget(row,column);widget.deleteLater()
-            self.signals.setRowCount(0);self.payload.clear()
-            self._payload_dirty=False
+            self.signals.setRowCount(0)
             if uid is None:
-                self.message_label.setText('Select a message to edit its full payload or DBC signals.')
+                self.message_label.setText('Select a message to view its DBC signals.')
                 self.signal_status.setText('DBC signal editing is available for messages added from a loaded DBC.');return
-            entry=self.engine.get(uid);self.payload.setText(entry.data.hex(' ').upper())
+            entry=self.engine.get(uid)
             self.message_label.setText(f'{entry.name} | ID {entry.identifier:X} | {len(entry.data)} bytes | '+('CAN FD' if entry.fd else 'Classic CAN'))
             if entry.definition is None:
                 self.signal_status.setText('Raw message. Add a message from DBC to edit signals.');return
@@ -318,19 +392,6 @@ class TransmitWindow(QMainWindow):
         except Exception as exc:self.signal_status.setText(f'Decode failed: {exc}')
         finally:
             self._syncing=False
-            current=self._current();busy=current is not None and any(self.engine.state(current)[1:3])
-            self.payload.setReadOnly(False)
-
-    def _edit_payload(self):
-        uid=self._current()
-        if uid is None or self._syncing or not self._payload_dirty:return
-        self._payload_dirty=False
-        entry=self.engine.get(uid)
-        def update():
-            payload=bytes.fromhex(self.payload.text())
-            if len(payload)!=len(entry.data):raise ValueError(f'Enter exactly {len(entry.data)} bytes; change DLC to resize a raw message.')
-            if payload!=entry.data or entry.waves:self.engine.update(replace(entry,data=payload,waves={}))
-        if self._try(update) is None:self._show_signals()
 
     def _set_signal(self,name,value):
         uid=self._current();entry=self.engine.get(uid)
@@ -420,7 +481,3 @@ class TransmitWindow(QMainWindow):
         return self._confirm_replace()
 
     def shutdown(self):self.engine.shutdown()
-
-    def closeEvent(self,event):
-        self.engine.stop_all()
-        super().closeEvent(event)

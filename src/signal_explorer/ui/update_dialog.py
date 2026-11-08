@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class UpdateDialog(QDialog):
-    def __init__(self, version, install, parent):
+    def __init__(self, version, install, parent, *, development=False):
         super().__init__(parent)
         self.setWindowTitle("Check for Updates")
         self.resize(520, 330)
@@ -32,18 +32,25 @@ class UpdateDialog(QDialog):
         self._status = QLabel()
         self._status.setTextFormat(Qt.TextFormat.PlainText)
         self._status.setWordWrap(True)
+        self._latest = QLabel("Newest available version: Checking…")
+        self._latest.setTextFormat(Qt.TextFormat.PlainText)
         self._notes = QPlainTextEdit(readOnly=True)
         self._check = QPushButton("Check Again")
         self._check.clicked.connect(self.check)
         self._download = QPushButton("Download and Install")
         self._download.clicked.connect(self._download_selected)
+        self._download.setVisible(install is not None)
         self._later = QPushButton("Later")
         self._later.clicked.connect(self.reject)
         buttons = QHBoxLayout()
         for button in (self._check, self._download, self._later):
             buttons.addWidget(button)
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel(f"Installed version {version}"))
+        current = version or "Unavailable"
+        if development:
+            current += " (development build)"
+        layout.addWidget(QLabel(f"Current version: {current}"))
+        layout.addWidget(self._latest)
         layout.addWidget(self._beta)
         layout.addWidget(self._status)
         layout.addWidget(self._notes)
@@ -64,6 +71,7 @@ class UpdateDialog(QDialog):
         QSettings().setValue("updates/include_beta", beta)
         self._update = None
         self._notes.clear()
+        self._latest.setText("Newest available version: Checking…")
         self._start("Checking GitHub Releases…", lambda: find_update(self._version, beta))
 
     def _download_selected(self):
@@ -95,15 +103,22 @@ class UpdateDialog(QDialog):
         for control in (self._beta, self._check, self._later):
             control.setEnabled(True)
         if error is not None:
+            if not installing:
+                self._latest.setText("Newest available version: Unavailable")
             self._status.setText(f"Update request failed. {error}")
         elif installing:
             self._status.setText("Installer verified.")
             self.accept()
             self._install(result)
-        elif result is None:
-            self._status.setText("No newer Windows installer found for the selected releases.")
         else:
-            self._update = result
-            self._status.setText(f"Version {result.version} is available.")
-            self._notes.setPlainText(result.notes)
-        self._download.setEnabled(self._update is not None)
+            latest = result.latest_version or "No published release found"
+            self._latest.setText(f"Newest available version: {latest}")
+            self._update = result.update
+            if self._install is None:
+                self._status.setText("Installation is available from the installed Windows app.")
+            elif self._update is None:
+                self._status.setText("No newer Windows installer found for the selected releases.")
+            else:
+                self._status.setText(f"Windows installer {self._update.version} is available.")
+                self._notes.setPlainText(self._update.notes)
+        self._download.setEnabled(self._install is not None and self._update is not None)

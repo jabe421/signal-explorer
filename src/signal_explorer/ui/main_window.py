@@ -2,6 +2,8 @@ from __future__ import annotations
 import logging
 import os
 
+from signal_explorer import DEVELOPMENT_VERSION
+
 from PySide6.QtCore import QByteArray, QSettings, QTimer, Qt
 from PySide6.QtGui import QAction, QActionGroup
 from signal_explorer.ui.adapter_preferences import AdapterPreference, CanChannelPreferences, can_channel_key, can_device_key
@@ -90,10 +92,17 @@ class CanToolDock(QDockWidget):
 
 class MainWindow(QMainWindow):
     _CAN_LAYOUT_KEY = "ui/can_tool_layout_with_graph"
+    _CAN_TRACE_WIDTHS_KEY = "ui/can_trace_column_widths"
 
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("Signal Explorer")
+        from signal_explorer.diagnostics import installed_build_info
+
+        build = installed_build_info()
+        self._running_version = build.get("version") or "Unavailable"
+        if build.get("source_checkout"):
+            self._running_version = f"{DEVELOPMENT_VERSION} (development build)"
+        self.setWindowTitle(f"Signal Explorer — {self._running_version}")
         self.resize(1400, 720)
 
         self._service = BusService(self)
@@ -175,6 +184,7 @@ class MainWindow(QMainWindow):
         help_menu = self.menuBar().addMenu('Help')
         help_menu.addAction('Diagnostics...').triggered.connect(self._open_diagnostics)
         help_menu.addAction('Check for Updates...').triggered.connect(self._check_for_updates)
+        help_menu.addAction('About Signal Explorer...').triggered.connect(self._show_about)
         self._backend = QComboBox()
         for spec in sorted(BACKENDS, key=lambda spec: spec.label.casefold()):
             self._backend.addItem(spec.label, spec.key)
@@ -265,11 +275,16 @@ class MainWindow(QMainWindow):
         self._table.collapsed.connect(lambda index: self._model.set_expanded(self._proxy.mapToSource(index), False))
         self._table.setAlternatingRowColors(True)
         self._table.setSelectionBehavior(QTreeView.SelectionBehavior.SelectRows)
-        self._table.header().setStretchLastSection(True)
+        self._table.header().setStretchLastSection(False)
         self._table.setColumnWidth(0, 165)
         self._table.setColumnWidth(3, 175)
         self._table.setColumnWidth(7, 210)
         self._table.setColumnWidth(8, 160)
+        widths = QSettings().value(self._CAN_TRACE_WIDTHS_KEY, [])
+        if (isinstance(widths, list) and len(widths) == self._proxy.columnCount()
+                and all(type(width) is int and width > 0 for width in widths)):
+            for column, width in enumerate(widths):
+                self._table.setColumnWidth(column, width)
 
         root = QVBoxLayout()
         # Adapter controls are stacked above the protocol tabs.
@@ -520,6 +535,7 @@ class MainWindow(QMainWindow):
             "Multi Message Sender", "canSenderDock", self._transmit_window,
             Qt.DockWidgetArea.BottomDockWidgetArea,
         )
+        self._transmit_window.close_requested.connect(self._transmit_dock.close)
         self._bus_health_dock = self._add_can_dock(
             "CAN Bus Health", "canHealthDock", self._bus_health_window,
             Qt.DockWidgetArea.RightDockWidgetArea,
@@ -1012,19 +1028,30 @@ class MainWindow(QMainWindow):
         self._diagnostics_window.raise_()
         self._diagnostics_window.activateWindow()
 
+    def _show_about(self):
+        QMessageBox.about(
+            self,
+            "About Signal Explorer",
+            f"Signal Explorer\nVersion {self._running_version}\n\n"
+            "An open-source desktop tool for monitoring, transmitting, recording "
+            "and replaying CAN, CAN FD, LIN and Ethernet traffic. "
+            "Use a supported hardware adapter or try the built-in simulation.",
+        )
+
     def _check_for_updates(self):
         if self._pending_update is not None:
             return
         from signal_explorer.diagnostics import installed_build_info
         from signal_explorer.ui.update_dialog import UpdateDialog
 
-        version = installed_build_info().get("version")
-        if os.name != "nt" or not version:
-            QMessageBox.information(self, "Check for Updates",
-                                    "Updates are available from the installed Windows release.")
-            return
         if self._update_dialog is None:
-            self._update_dialog = UpdateDialog(version, self._install_update, self)
+            build = installed_build_info()
+            version = build.get("version")
+            install = self._install_update if os.name == "nt" and version else None
+            development = build.get("source_checkout", False)
+            if development:
+                version = DEVELOPMENT_VERSION
+            self._update_dialog = UpdateDialog(version, install, self, development=development)
         self._update_dialog.show()
         self._update_dialog.raise_()
         self._update_dialog.check()
@@ -1088,7 +1115,11 @@ class MainWindow(QMainWindow):
         self._counts_timer.stop()
         if self._timing_window is not None:
             self._timing_window.close()
-        QSettings().setValue(self._CAN_LAYOUT_KEY, self.saveState())
+        settings = QSettings()
+        settings.setValue(self._CAN_LAYOUT_KEY, self.saveState())
+        settings.setValue(self._CAN_TRACE_WIDTHS_KEY, [
+            self._table.columnWidth(column) for column in range(self._proxy.columnCount())
+        ])
         self._transmit_window.shutdown()
         super().closeEvent(event)
 

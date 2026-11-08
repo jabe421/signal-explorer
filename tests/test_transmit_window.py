@@ -11,8 +11,8 @@ from unittest.mock import patch
 import can
 import cantools
 import pytest
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication, QMessageBox, QPushButton, QComboBox, QLineEdit
+from PySide6.QtCore import QPoint, Qt, QTimer
+from PySide6.QtWidgets import QApplication, QMessageBox, QPushButton, QComboBox, QLineEdit, QInputDialog
 from PySide6.QtTest import QTest
 from signal_explorer.bus.backends import BACKENDS
 from signal_explorer.bus.service import BusService
@@ -208,7 +208,7 @@ def test_window_byte_signal_editing_clone_and_save_reload_offline(tmp_path):
     finally:window.shutdown();window.close()
 
 
-def test_main_single_sender_remains_and_secondary_window_reuses_and_stops(wire):
+def test_main_single_sender_remains_and_multi_sender_runs_with_panel_closed():
     window=MainWindow();service=window._service
     try:
         service.connect_bus(VIRTUAL,'main-multi-'+uuid4().hex,500000,False)
@@ -221,9 +221,18 @@ def test_main_single_sender_remains_and_secondary_window_reuses_and_stops(wire):
         assert not sender.engine.state(entry.uid)[1]
         sender._send_row(entry.uid)
         assert wait_for(lambda:sender.engine.state(entry.uid)[0]>=3)
-        sender.close()
-        assert not sender.engine.state(entry.uid)[1]
+        count = sender.engine.state(entry.uid)[0]
+        assert window._transmit_dock.close()
+        assert window._transmit_dock.isHidden()
+        assert wait_for(lambda: sender.engine.state(entry.uid)[0] > count)
         assert window._open_transmit_window() is sender and sender.table.rowCount()==1
+        close_button = next(button for button in sender.findChildren(QPushButton)
+                            if button.text() == "Close")
+        close_button.click()
+        assert window._transmit_dock.isHidden()
+        assert sender.engine.state(entry.uid)[1]
+        service.disconnect_bus()
+        assert not sender.engine.state(entry.uid)[1]
         sender._dirty=False
     finally:
         if window._transmit_window:window._transmit_window._dirty=False
@@ -334,7 +343,7 @@ def test_live_ui_editing_preserves_typed_text_and_manual_signal_edits_override_w
         row=TxEntry(cyclic=True,period_ms=20);window.engine.add(row);window.show();app.processEvents()
         window.engine.start([row.uid],True)
         assert wait_for(lambda:window.engine.state(row.uid)[0]>=2)
-        assert window.table.cellWidget(0,3).isEnabled() and not window.payload.isReadOnly()
+        assert window.table.cellWidget(0,3).isEnabled()
         item=window.table.item(0,11);window.table.setCurrentCell(0,11);window.table.editItem(item)
         editor=window.table.findChild(QLineEdit)
         assert editor is not None
@@ -342,18 +351,24 @@ def test_live_ui_editing_preserves_typed_text_and_manual_signal_edits_override_w
         assert editor.text()=='AB'
         QTest.keyClick(editor,Qt.Key.Key_Return)
         assert wait_for(lambda:window.engine.last_data(row.uid)[0]==0xAB)
-        window.payload.setFocus();app.processEvents()
-        QTest.keyClick(window.payload,Qt.Key.Key_A,Qt.KeyboardModifier.ControlModifier)
-        QTest.keyClicks(window.payload,'01 02 03 04 05 06 07 08')
-        window._refresh_status()
-        assert window.payload.text()=='01 02 03 04 05 06 07 08'
-        window.payload.clearFocus();app.processEvents()
-        assert wait_for(lambda:window.engine.get(row.uid).data==bytes(range(1,9)))
+        window.table.item(0,5).setCheckState(Qt.CheckState.Checked)
+        window.table.item(0,7).setText('64')
+        assert window.table.horizontalHeaderItem(74).text() == '63'
+        assert window.table.horizontalScrollBar().maximum() > 0
+        window.table.setCurrentCell(0,74)
+        scroll_position = window.table.horizontalScrollBar().value()
+        window.table.item(0,74).setText('CD')
+        assert window.table.horizontalScrollBar().value() == scroll_position
+        assert wait_for(lambda: len(window.engine.last_data(row.uid)) == 64
+                        and window.engine.last_data(row.uid)[63] == 0xCD)
         dbc=dbc_entry(cantools.database.load_file('examples/demo.dbc').get_message_by_frame_id(0x200))
         dbc=replace(dbc,cyclic=True,period_ms=20,waves={'EngineRPM':Waveform('Ramp',800,1600,100,1000)})
         window.engine.add(dbc);window.table.setCurrentCell(1,1);window.engine.start([dbc.uid],True)
         assert wait_for(lambda:window.engine.state(dbc.uid)[0]>=2)
-        window.payload.setFocus();app.processEvents();window.payload.clearFocus();app.processEvents()
+        assert not window.table.item(1,74).flags() & Qt.ItemFlag.ItemIsEditable
+        window.table.item(0,7).setText('16')
+        assert window.table.horizontalHeaderItem(26).text() == '15'
+        assert window.table.horizontalHeaderItem(27).text() == 'Sent'
         assert window.engine.get(dbc.uid).waves
         signal_row=next(i for i in range(window.signals.rowCount()) if window.signals.item(i,0).text()=='EngineRPM')
         assert window.signals.item(signal_row,4).flags() & Qt.ItemFlag.ItemIsEditable
@@ -364,6 +379,67 @@ def test_live_ui_editing_preserves_typed_text_and_manual_signal_edits_override_w
         window.table.item(1,9).setCheckState(Qt.CheckState.Unchecked)
         assert not window.engine.state(dbc.uid)[1]
     finally:window.shutdown();window.close()
+
+
+def test_full_payload_editor_opens_from_byte_cell_and_header():
+    window = TransmitWindow(BusService())
+    try:
+        entry = TxEntry(fd=True, data=bytes(64))
+        window.engine.add(entry)
+        window.show()
+        app.processEvents()
+        table = window.table
+        column = 11
+        header = table.horizontalHeader()
+        cell_position = table.visualItemRect(table.item(0, column)).center()
+        header_position = QPoint(header.sectionViewportPosition(column) + 8, header.height() // 2)
+        for target, position, data in (
+            (table.viewport(), cell_position, bytes(range(64))),
+            (header.viewport(), header_position, bytes(reversed(range(64)))),
+        ):
+            def enter_payload():
+                dialog = app.activeModalWidget()
+                if isinstance(dialog, QInputDialog):
+                    editor = dialog.findChild(QLineEdit)
+                    editor.setText(data.hex(" "))
+                    QTest.keyClick(editor, Qt.Key.Key_Return)
+
+            QTimer.singleShot(0, enter_payload)
+            QTest.mouseDClick(target, Qt.MouseButton.LeftButton, pos=position)
+            assert window.engine.get(entry.uid).data == data
+            assert table.item(0, 7).text() == str(len(data))
+            assert table.item(0, column + len(data) - 1).text() == f"{data[-1]:02X}"
+
+        warnings = []
+        cancelled = []
+        short_payload = bytes(16).hex(" ")
+
+        def enter_short_payload():
+            dialog = app.activeModalWidget()
+            editor = dialog.findChild(QLineEdit)
+            editor.setText(short_payload)
+            QTest.keyClick(editor, Qt.Key.Key_Return)
+
+        def close_editor():
+            dialog = app.activeModalWidget()
+            cancelled.append((dialog.findChild(QLineEdit).text(),
+                              bool(dialog.windowFlags() & Qt.WindowType.WindowCloseButtonHint)))
+            dialog.close()
+
+        def warn(parent, title, message):
+            warnings.append(message)
+            QTimer.singleShot(0, close_editor)
+
+        with patch("signal_explorer.ui.transmit_window.QMessageBox.warning", side_effect=warn):
+            QTimer.singleShot(0, enter_short_payload)
+            QTest.mouseDClick(table.viewport(), Qt.MouseButton.LeftButton, pos=cell_position)
+        assert warnings == ["Expected 64 bytes for this row's DLC. You entered 16 bytes."]
+        assert cancelled == [(short_payload, True)]
+        assert window.engine.get(entry.uid).data == data
+        assert table.item(0, 7).text() == "64"
+    finally:
+        window.shutdown()
+        window.close()
 
 
 def test_open_save_buttons_replace_clipboard_actions_and_keep_file_menu(tmp_path):

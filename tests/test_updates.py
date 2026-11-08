@@ -4,9 +4,10 @@ import json
 from types import SimpleNamespace
 
 import pytest
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QLabel
 
 from signal_explorer import updates
+from signal_explorer import DEVELOPMENT_VERSION
 from signal_explorer.ui.main_window import MainWindow
 
 
@@ -35,12 +36,40 @@ def test_selects_newer_published_installers_for_selected_channel(monkeypatch):
         release("0.2.0"),
     ]
     monkeypatch.setattr(updates, "urlopen", lambda *a, **kw: io.BytesIO(json.dumps(releases).encode()))
-    assert updates.find_update("0.3.0-beta.2", False) is None
-    assert updates.find_update("0.3.0-beta.2", True).version == "0.3.0-beta.10"
+    stable = updates.find_update("0.3.0-beta.2", False)
+    assert stable.latest_version == "0.3.2"
+    assert stable.update is None
+    assert updates.find_update("0.3.0-beta.2", True).update.version == "0.3.0-beta.10"
     releases.append(release("0.3.0"))
-    assert updates.find_update("0.3.0-beta.10", True).version == "0.3.0"
-    assert updates.find_update("0.3.0-beta.10", False).version == "0.3.0"
-    assert updates.find_update("0.3.0", True) is None
+    assert updates.find_update("0.3.0-beta.10", True).update.version == "0.3.0"
+    assert updates.find_update("0.3.0-beta.10", False).update.version == "0.3.0"
+    assert updates.find_update("0.3.0", True).update is None
+    releases[:] = [release("0.3.0")]
+    assert updates.find_update("0.3.0", False) == updates.UpdateCheck("0.3.0", None)
+    assert updates.find_update(None, False) == updates.UpdateCheck("0.3.0", None)
+
+
+def test_development_help_menu_shows_versions_without_install(monkeypatch):
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr("signal_explorer.diagnostics.installed_build_info",
+                        lambda: {"source_checkout": True})
+    monkeypatch.setattr("signal_explorer.ui.update_dialog.UpdateDialog.check", lambda self: None)
+    window = MainWindow()
+    try:
+        help_menu = next(action.menu() for action in window.menuBar().actions()
+                         if action.text() == "Help")
+        next(action for action in help_menu.actions()
+             if action.text() == "Check for Updates...").trigger()
+        dialog = window._update_dialog
+        dialog._results.put((False, updates.UpdateCheck("0.3.0-beta.2", None), None))
+        dialog._receive_result()
+        labels = [label.text() for label in dialog.findChildren(QLabel)]
+        assert f"Current version: {DEVELOPMENT_VERSION} (development build)" in labels
+        assert "Newest available version: 0.3.0-beta.2" in labels
+        assert dialog._download.isHidden()
+    finally:
+        window.close()
+        app.processEvents()
 
 
 @pytest.mark.parametrize("payload", [b"installer", b"corrupted", b"short", b"oversized installer"])
