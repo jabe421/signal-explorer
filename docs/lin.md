@@ -13,7 +13,7 @@
 5. Disconnect, choose Slave, connect. The peer master requests local responses.
    Edit ID 20 data, Apply Responses, and observe TX only after a header arrives.
 6. Start Logging / Stop Logging, choose an MF4 filename. Logs are independent of
-   trace filters/pause. Cancellation retains the file for Save Log.
+   trace filters/pause. Cancellation retains the file for Save Log. On exit, choose **No** when asked to save the log to discard the temporary recording.
 7. Master Playback Headers replays recorded headers using current publishers.
    Slave Replay Response Buffers replays changes to selected local response IDs,
    not unsolicited wire frames. Stop/completion restores configured buffers.

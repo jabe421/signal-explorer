@@ -3,7 +3,7 @@ from math import floor, isfinite
 
 from cantools.database.errors import DecodeError
 from PySide6.QtCore import QPointF, QRectF, QTimer, Qt
-from PySide6.QtGui import QPainter, QPainterPath, QPalette
+from PySide6.QtGui import QColor, QPainter, QPainterPath, QPalette
 from PySide6.QtWidgets import (
     QComboBox, QFormLayout, QHBoxLayout, QLabel, QListWidget, QPushButton,
     QScrollArea, QSizePolicy, QVBoxLayout, QWidget,
@@ -13,6 +13,7 @@ from signal_explorer.ui.trace_timestamps import valid_timestamp
 
 
 TIME_WINDOWS = (10, 30, 60)
+OVERLAY_COLORS = ("#e69f00", "#009e73", "#cc79a7", "#d55e00", "#56b4e9")
 
 
 class SignalHistory:
@@ -72,41 +73,50 @@ class SignalPlot(QWidget):
         seconds = graph.seconds.currentData()
         left = graph.latest - seconds
         width = self.width() - 82
-        lane_height = (self.height() - 26) / len(graph.series)
-        for index, (key, samples) in enumerate(graph.series.items()):
-            points = sorted((t, y) for t, y in samples if t >= left)
+        lane_height = (self.height() - 26) / len(graph.groups)
+        for index, group in enumerate(graph.groups):
             top = index * lane_height
-            area = QRectF(68, top + 19, width, max(1, lane_height - 23))
-            painter.setPen(palette.text().color())
-            label = graph.series_label(key)
-            painter.drawText(QRectF(6, top, self.width() - 12, 18),
-                             Qt.AlignmentFlag.AlignLeft,
-                             painter.fontMetrics().elidedText(label, Qt.TextElideMode.ElideRight, self.width() - 12))
+            legend_height = 18 * len(group)
+            area = QRectF(68, top + legend_height, width, max(1, lane_height - legend_height - 5))
+            traces = []
+            for slot, key in enumerate(group):
+                color = trace_color if slot == 0 else QColor(OVERLAY_COLORS[slot - 1])
+                label = painter.fontMetrics().elidedText(
+                    graph.series_label(key), Qt.TextElideMode.ElideRight, self.width() - 30)
+                painter.setPen(color)
+                y = top + slot * 18
+                painter.drawLine(QPointF(6, y + 9), QPointF(20, y + 9))
+                painter.setPen(palette.text().color())
+                painter.drawText(QRectF(25, y, self.width() - 30, 18), Qt.AlignmentFlag.AlignLeft, label)
+                traces.append((color, sorted((t, y) for t, y in graph.series[key] if t >= left)))
             painter.setPen(palette.mid().color())
             painter.drawRect(area)
             for tick in range(1, 4):
                 x = area.left() + width * tick / 4
                 painter.drawLine(QPointF(x, area.top()), QPointF(x, area.bottom()))
-            if not points:
+            values = [value for _, points in traces for _, value in points]
+            if not values:
                 continue
-            low = min(value for _, value in points)
-            high = max(value for _, value in points)
+            low, high = min(values), max(values)
             painter.setPen(palette.text().color())
             painter.drawText(4, int(area.top() + 11), f"{high:.4g}")
             if low != high and area.height() > 20:
                 painter.drawText(4, int(area.bottom()), f"{low:.4g}")
-            path = QPainterPath()
-            for point_index, (stamp, value) in enumerate(points):
-                x = area.left() + (stamp - left) * width / seconds
-                fraction = (value - low) / (high - low) if high != low else 0.5
-                y = area.bottom() - fraction * area.height()
-                if point_index == 0:
-                    path.moveTo(x, y)
-                else:
-                    path.lineTo(x, y)
-            painter.setPen(trace_color)
-            painter.drawPath(path)
-            painter.drawEllipse(path.currentPosition(), 2.5, 2.5)
+            for color, points in traces:
+                if not points:
+                    continue
+                path = QPainterPath()
+                for point_index, (stamp, value) in enumerate(points):
+                    x = area.left() + (stamp - left) * width / seconds
+                    fraction = (value - low) / (high - low) if high != low else 0.5
+                    y = area.bottom() - fraction * area.height()
+                    if point_index == 0:
+                        path.moveTo(x, y)
+                    else:
+                        path.lineTo(x, y)
+                painter.setPen(color)
+                painter.drawPath(path)
+                painter.drawEllipse(path.currentPosition(), 2.5, 2.5)
 
         painter.setPen(palette.text().color())
         painter.drawText(68, self.height() - 7, f"−{seconds} s")
@@ -119,6 +129,7 @@ class SignalGraph(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.series = {}
+        self.groups = []
         self.definitions = {}
         self.by_frame = {}
         self.latest = None
@@ -137,10 +148,12 @@ class SignalGraph(QWidget):
         for span in TIME_WINDOWS:
             self.seconds.addItem(f"{span} s", span)
         self.seconds.setCurrentIndex(1)
+        self.add_to = QComboBox()
+        self.add_to.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
         form = QFormLayout()
         for label, combo in (("Channel", self.channel), ("Direction", self.direction),
                              ("Message", self.message), ("Signal", self.signal),
-                             ("Time window", self.seconds)):
+                             ("Time window", self.seconds), ("Add To", self.add_to)):
             form.addRow(label, combo)
         self.add_button = QPushButton("Add signal")
         remove = QPushButton("Remove selected")
@@ -178,6 +191,8 @@ class SignalGraph(QWidget):
 
     def set_database(self, database):
         self.series.clear()
+        self.groups.clear()
+        self._update_add_to()
         self.selection.clear()
         self.by_frame.clear()
         self.definitions.clear()
@@ -235,14 +250,33 @@ class SignalGraph(QWidget):
         unit = definition.get_signal_by_name(name).unit
         return f"{definition.name}.{name}" + (f" ({unit})" if unit else "")
 
+    def _update_add_to(self):
+        previous = self.add_to.currentData()
+        self.add_to.clear()
+        self.add_to.addItem("New graph")
+        for key in self.series:
+            self.add_to.addItem(self.series_label(key), key)
+        self.add_to.setCurrentIndex(max(0, self.add_to.findData(previous)))
+
+    def _resize_plot(self):
+        largest_group = max(map(len, self.groups), default=0)
+        lane_height = 45 + 18 * largest_group
+        self.plot.setMinimumHeight(max(180, lane_height * len(self.groups) + 26))
+
     def add_signal(self):
         key = (self.message.currentData(), self.signal.currentText())
         if not self.add_button.isEnabled():
             return
+        target = self.add_to.currentData()
+        if target is None:
+            self.groups.append([key])
+        else:
+            next(group for group in self.groups if target in group).append(key)
         self.series[key] = SignalHistory()
+        self._update_add_to()
         self.by_frame.setdefault(key[0], set()).add(key[1])
         self.selection.addItem(self.series_label(key))
-        self.plot.setMinimumHeight(max(180, 63 * len(self.series) + 26))
+        self._resize_plot()
         self._update_picker()
         self.plot.update()
 
@@ -251,14 +285,20 @@ class SignalGraph(QWidget):
         if row < 0:
             return
         frame, name = list(self.series)[row]
-        del self.series[frame, name]
+        key = (frame, name)
+        del self.series[key]
+        group = next(group for group in self.groups if key in group)
+        group.remove(key)
+        if not group:
+            self.groups.remove(group)
+        self._update_add_to()
         self.by_frame[frame].remove(name)
         if not self.by_frame[frame]:
             del self.by_frame[frame]
         self.selection.takeItem(row)
         if not self.series:
             self.latest = None
-        self.plot.setMinimumHeight(max(180, 63 * len(self.series) + 26))
+        self._resize_plot()
         self._update_picker()
         self.plot.update()
 
@@ -266,7 +306,7 @@ class SignalGraph(QWidget):
         for samples in self.series.values():
             samples.clear()
         self.latest = None
-        self.plot.setMinimumHeight(max(180, 63 * len(self.series) + 26))
+        self._resize_plot()
         self.plot.update()
 
     def append_frames(self, frames):

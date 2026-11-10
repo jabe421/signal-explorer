@@ -93,7 +93,7 @@ p('CAN / CAN FD, LIN and Ethernet desktop workbench','Centered')
 story.append(Spacer(1,22))
 figure('can.png','Figure 1: Signal Explorer running virtual CAN FD traffic with the demo DBC.')
 story.append(Spacer(1,16))
-p('Application version 0.1.0 - CAN timing and driver TX reports<br/>Document revision 1.7 - November 5, 2026','Centered')
+p('Application version 0.1.0 - DBC editing, Signal Graph and log handling<br/>Document revision 1.8 - November 10, 2026','Centered')
 note('This guide describes the current source build. Hardware driver integration is not a physical-bus qualification. '
      'NI-XNET USB-8502, native LIN and ValueCAN Ethernet await powered bench verification. Passive PC Ethernet capture has been checked. '
      'Ethernet TX awaits physical testing. SENT, CAN XL and signal plotting are not implemented. A Windows installer beta is available; vendor drivers remain separate.')
@@ -106,7 +106,7 @@ table(['Section','Pages','Use it for'],[
     ['<link href="#s1">1. System prerequisites &amp; hardware profile</link>',page_range('s1','ni_profile'),'PC requirements, rates, FD, isolation and NI-XNET scope.'],
     ['<link href="#s2">2. Mandatory driver/software setup</link>',page_range('s2'),'Preparation before USB or bus connection; Npcap.'],
     ['<link href="#s3">3. Connection &amp; verification</link>',page_range('s3','can_channels'),'CAN, NI USB-8502, LIN and Ethernet checks.'],
-    ['<link href="#s4">4. Graphical interface reference map</link>',page_range('s4','tx_signals'),'Columns and controls, including the DBC editor.'],
+    ['<link href="#s4">4. Graphical interface reference map</link>',page_range('s4','signal_graph'),'Columns and controls, including the DBC editor and Signal Graph.'],
     ['<link href="#s5">5. Practical workflows</link>',page_range('s5','tx_workflow'),'DBC editing/decoding, LDF, sending and MF4 replay.'],
     ['<link href="#s6">6. Troubleshooting &amp; fault codes</link>',page_range('s6','tx_clocks'),'CAN/LIN/Ethernet faults, driver errors and recovery.'],
     ['<link href="#s7">7. Appendix: adapter pinouts</link>',page_range('s7','ethernet_pins'),'CANable, Kvaser, PEAK, Vector, Intrepid, NI and Ethernet.'],
@@ -337,8 +337,7 @@ table(['Region','What it contains'],[
     ['D. Under trace','TX channel, message ID, Extended ID, FD frame, BRS, data, interval, Send/Stop and Multi-message TX....'],
     ['E. Recording area / bottom','Logging/save/playback, recorded-bus and direction selectors, logger/playback status and CAN RX/TX/visible-row counts.'],
 ], [1.45,4.7], 'Read the CAN window from top to bottom.')
-p('<b>Graphs:</b> there are no plots, gauges, signal charts, bus-load graphs or time cursors in this build. Decoded signals are text in the trace. '
-  'Use the saved MF4 in a suitable external viewer when plots are needed. This guide does not invent controls from vendor sample tools.')
+p('Use <b>View &gt; Signal Graph</b> to plot decoded CAN signals and <b>View &gt; CAN Bus Health</b> for channel statistics. See section 4.11 for plotting live traffic and replay.')
 p('<b>Adapter defaults:</b> CAN, LIN and Ethernet lists are alphabetical. Each protocol selects Virtual on first launch, then restores its last selection for this Windows user. Restoration does not connect. CAN/LIN save the backend family; Ethernet saves the NIC/device identity and falls back to Virtual if unavailable, preserving the saved choice for a later Refresh.','Small')
 
 # 9 ---------------------------------------------------------------------------
@@ -455,15 +454,15 @@ table(['Control','Meaning'],[
 p('Display cap: first 100000 rows or about 32 MiB of text; the output reports truncation, but replay reads the entire file. No ASC/BLF/PCAP import, seek, speed or automatic loop. LIN retains Master-header/Slave-buffer semantics.','Small')
 
 page('4.8 DBC editor reference map','dbc_editor_map')
-figure('dbc-editor.png','Figure: DBC editor with the demo EngineData message, highlighted RPM bits and offline decoded payload.',285)
+figure('dbc-editor.png','Figure: Message Tree, color-coded EngineData bits and offline payload decoding.',285)
 table(['Region / control','Function'],[
     ['File / toolbar','New, Open, Save, Save As and Validate. Edit menu / toolbar: Undo and Redo. Standard keyboard shortcuts are available.'],
-    ['Messages, left','Hex IDs and message names. Add/Edit/Delete; double-click opens message properties: ID, standard/extended, CAN/FD, byte length, cycle time, senders and comment.'],
+    ['Messages, left','Messages lists hex IDs. Message Tree expands messages into signals and groups Tx/Rx messages by network node. The filter narrows both tabs as you type a name or hex/decimal CAN ID. Double-click a message or signal to edit it.'],
     ['Signals, center','Name, Start, Bits, Order, Signed, Factor, Offset, Unit and Range. Add/Edit/Delete signal or double-click its row. Properties also include receivers, comments and raw-value labels.'],
-    ['Message map, right','Payload bytes down the rows and bits 7 to 0 across. Select a signal to highlight its bits and show start/length/order. Hover for DBC bit numbers and owners; drag the divider to resize.'],
-    ['DBC preview / Test decoding','Read-only generated DBC text. Enter exactly the selected message\'s byte length in hex for physical values and value labels. This calculation is offline; it sends no frame.'],
+    ['Message map, right','Colored cells show DBC bit numbers. Signal names appear once at the top of each visible field. Wider signals show MSB and LSB; single-bit signals show just the number. Hover for full names.'],
+    ['DBC preview / Test decoding','Drag the divider above the preview to give the text more room. Enter exactly the selected message\'s byte length in hex for physical values and value labels. This calculation is offline; it sends no frame.'],
 ], [1.45,4.7], 'Open with Edit DBC beside Load DBC / Unload DBC on the CAN screen.')
-p('The editor uses a private database copy. Live monitoring, scripts and recording continue. Unsaved edits do not change decoding; section 5.7 explains save/reload rules and editing limits.','Small')
+p('The editor remembers its window size and position, divider positions and signal column widths. It uses a private database copy. Live monitoring, scripts and recording continue. Unsaved edits do not change decoding; section 5.7 explains save/reload rules and editing limits.','Small')
 
 page('4.9 Multi-message sender: controls','tx_map')
 figure('transmit-list.png','Figure: Send Messages on Virtual CAN FD; the EngineData row is sending cyclically.',255)
@@ -495,6 +494,18 @@ p('Subsequent sends use the accepted edit. An already dispatched frame can finis
 h('Scheduling and lifecycle')
 p('Stop All, closing this window, CAN disconnect or starting logfile playback stops its schedules. Reopening retains rows in this app session; reconnecting never restarts them. Rechecking Use/Cyclic requires Start. Monitor pause/filtering does not stop TX or exclude it from logging. Python and main-window senders are independent.')
 note('Timing is best effort on the PC. Arbitration, driver latency and competing sends can delay frames; missed cycles are skipped without a catch-up burst. This window does not generate RTR/electrical error frames or provide hardware-timed scheduling.')
+
+page('4.11 Signal Graph','signal_graph')
+h('Plot live CAN signals')
+steps(['Load the matching DBC on the CAN screen and open <b>View &gt; Signal Graph</b>.',
+       'Select the CAN channel and direction. Choose a DBC message and signal, then click <b>Add signal</b>.',
+       'Choose a 10, 30 or 60 second time window. Start or resume Exploring to collect new samples. The graph collects matching frames while its dock is open.'])
+h('Overlay signals')
+p('Choose another message and signal. Under <b>Time window</b>, set <b>Add To</b> to any signal already on the graph you want, then click <b>Add signal</b>. Choose <b>New graph</b> for a separate plot. Each overlaid line has a contrasting color and a legend entry. Signals on the same plot share one vertical scale, so signals with comparable units and ranges are easiest to compare.')
+p('You can plot up to six signals. Select a signal in the list and click <b>Remove selected</b> to remove its trace. <b>Clear samples</b> empties the plots while keeping the selected signals.')
+h('Plot CAN log playback')
+p('Open the graph before starting <b>Playback Log as TX</b>. Select the playback destination CAN channel and <b>Sent (TX)</b> in the graph. Load the matching DBC and add the signals you want to see. Replayed frames must appear as TX in the CAN trace. Opening a file for offline inspection alone does not feed the graph.')
+note('If the graph dock is checked but missing, choose <b>View &gt; Reset CAN Tool Layout</b>, then reopen the graph. This resets the other CAN tool dock positions as well.')
 
 page('5 Practical workflows: CAN and DBC','s5')
 h('5.1 Decode a database and filter IDs')
@@ -542,7 +553,7 @@ page('5.4 MF4 logging and timed playback','recording')
 h('Record and save')
 steps(['Connect the relevant protocol and Start Logging. Both RX and TX observations are captured before display filtering/pause. A CAN log includes all enabled CAN channels; separate protocol tabs create separate files.',
        'Stop Logging drains/finalizes the MDF4 recording and opens the save dialog. Enter a filename; .mf4 is appended when necessary.',
-       'Cancel keeps a finalized temporary recording. Use Save Log... to save it later; a pending unsaved recording blocks starting a new log. Save failures retain the source file.',
+       'Cancel keeps the finalized temporary recording for Save Log... and blocks starting a new log. When exiting, the app asks Save log file before exiting? Yes opens Save; No discards the temporary log and continues closing. Canceling Save during exit keeps the app open.',
        'Disconnect or closing finalizes active logging too. Close waits for recording/playback work and save handling. Temporary files are not a promised power-loss recovery system.'])
 h('Playback controls and meaning')
 table(['Control / status','Effect'],[
@@ -603,7 +614,7 @@ steps(['Open the correct protocol MF4 via File Viewer, connect the intended dest
 page('5.7 Create, edit and verify a DBC','dbc_editor_workflow')
 h('Open a private editing copy')
 steps(['Load the intended DBC on the CAN screen, then click <b>Edit DBC</b>. The editor starts with a private copy of the loaded database. With no loaded database it starts empty; Open chooses another file and New starts a blank document.',
-       'Use Add/Edit/Delete below Messages. Enter the arbitration ID in hex, select standard/extended and Classic/FD, then set payload byte length, cycle time, senders and optional comment. Cycle time is database metadata; it does not start repeated sending.',
+       'Use the Messages list or Message Tree to select a frame. Type in Filter to narrow both tabs. Use Add/Edit/Delete below the tabs. Enter the arbitration ID in hex, select standard/extended and Classic/FD, then set payload byte length, cycle time, senders and optional comment. Cycle time is database metadata; it does not start repeated sending.',
        'Use Add signal or double-click a signal row. Set name, start bit, bit length, byte order, signedness, factor/offset, optional range and unit. Receivers, comment and raw-value labels are in the properties dialog. Enter labels one per line, such as 0=Released and 1=Pressed.',
        'Select a signal and check the message map. Intel uses little-endian ordering. Motorola uses DBC sawtooth numbering: start bit 7 runs through bit 0, then bit 15. Map column labels are bit positions within each byte.',
        'Click Validate. Overlapping/out-of-payload signals and other invalid edits are rejected without replacing the document. Undo/Redo restores accepted edits. Test decoding with a payload of exactly the message\'s length to check scaling and labels offline.'])
@@ -908,6 +919,7 @@ p('Vector\'s official CDN rejected the local download during preparation. Vector
   'for current revision details, use the official manual/Hardware Manager before wiring. Conditional piggy tables are examples and do not identify the user\'s two uninspected LIN piggies.','Small')
 page('7.11 Revision history and validation','revision')
 table(['Revision / date','Change'],[
+    ['1.8 / November 10, 2026','Message Tree and live filtering, resizable DBC preview, remembered layout, bit and endpoint labels, CAN signal overlays and unsaved recording prompt.'],
     ['1.7 / November 5, 2026','Opt-in driver TX reports, CAN timestamp provenance, monotonic host estimates and bounded recorder reordering with correction diagnostics.'],
     ['1.6 / November 5, 2026','Busy-bus CAN batching and cached DBC/tree lookup; retained script history, drop counters, flush/capture filters, local TX timestamps and notification-driven waits.'],
     ['1.0 / October 25, 2026','Initial CAN/FD/LIN guide, workflows, fault recovery, adapter pinouts and CLI.'],
@@ -942,7 +954,7 @@ def decorate(canvas,doc):
         canvas.line(52,H-41,W-52,H-41)
     canvas.line(52,40,W-52,40)
     canvas.setFont('Helvetica',8)
-    canvas.drawString(52,26,'SIGNAL EXPLORER  |  Revision 1.7  |  November 5, 2026')
+    canvas.drawString(52,26,'SIGNAL EXPLORER  |  Revision 1.8  |  November 10, 2026')
     canvas.drawRightString(W-52,26,str(doc.page))
     canvas.restoreState()
 
@@ -961,4 +973,3 @@ if __name__=='__main__':
         print(f'{i:02} {len(text):4} {title}')
         assert title.replace('&','&') in text.replace('\n',' '),f'Unexpected pagination on page {i}: {title}'
     assert len(reader.pages)==len(pages),'Unexpected overflow page: inspect and adjust layout.'
-    assert len(reader.pages)==47

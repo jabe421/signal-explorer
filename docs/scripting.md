@@ -253,3 +253,9 @@ matching and send operations; `CanScriptTransport` is the only implementation.
 The editor depends on that transport boundary and the controller, not a native
 driver. Future Ethernet support can add an Ethernet transport/frame/client without
 replacing the editor, worker control or shared monitor/logger architecture.
+
+## Keep or discard recorded test evidence
+
+Canceling the recording Save dialog keeps the temporary log available for
+**Save Log...**. On exit, **Yes** opens Save and **No** discards the pending
+recording and continues closing. See [Recording and replay](recording.md).

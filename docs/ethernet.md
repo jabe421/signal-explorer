@@ -72,7 +72,7 @@ physical TX and the powered ValueCAN Ethernet bench remain unvalidated.
    demo traffic, transmissions and logging continue. **Start Exploring** resumes
    with new frames; it does not backfill traffic received while paused.
 5. Use **Start Logging**, then **Stop Logging**. Choose an `.mf4` filename when
-   prompted. Canceling retains the recording for **Save Log...**. Both RX and TX
+   prompted. Canceling retains the recording for **Save Log...**. On exit, choose **No** when asked to save the log to discard the temporary recording. Both RX and TX
    are recorded, independently of trace filters, Clear, or monitor pause.
 6. **Playback Log as Simulated TX** sends the selected recorded bus/direction
    through the simulated link at 1x relative timing. Each selected record becomes

@@ -279,6 +279,14 @@ class MF4Recorder(QObject):
             self.changed.emit()
             self.finalized.emit(str(path) if finalized else "", self.problem)
 
+    def discard_pending(self):
+        """Remove only the finalized temporary recording."""
+        if self.busy or self.pending_path is None:
+            raise RuntimeError("No finalized recording is ready to discard.")
+        self.pending_path.unlink(missing_ok=True)
+        self.pending_path = None
+        self.changed.emit()
+
     def save_as(self, destination):
         """Atomic destination replacement; keep the original if copying fails."""
         if self.busy or self.pending_path is None:

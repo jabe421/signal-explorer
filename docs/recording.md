@@ -1,6 +1,6 @@
 # Recording and replay extension points
 
-Updated November 6, 2026.
+Updated November 10, 2026.
 
 ## Current implementation
 
@@ -13,6 +13,9 @@ Updated November 6, 2026.
   relative timing, protocol TX validation, cancellation and progress.
 - `ui/recording_panel.py`: shared record/save/replay UI for each protocol tab.
   Each capture is single-protocol; CAN includes every enabled CAN channel.
+  Canceling Save retains the temporary recording. On exit, **Save log file
+  before exiting?** offers **Yes** to save or **No** to discard and exit.
+  Canceling Save during exit keeps the app open and the recording available.
 - `bus/service.py`: raw RX/TX observations before display queues, filters and
   monitor pause. Scripts and single/multi-message sending share this path.
   DirectConnection subscribers must be thread-safe.
@@ -38,6 +41,7 @@ Select one **Recorded bus**, RX/TX direction and one main **TX channel** for CAN
 replay. Every selected replayable observation becomes TX at best-effort original
 relative timing. Replay stops the main repeat sender and multi-message schedules;
 reconnection does not restart them. This is not automatic multi-bus rebroadcast.
+See [Signal Graph](signal-graph.md) to plot CAN replay on the destination channel.
 Logging during replay records the new session observations. Selecting both the
 original TX and looped-back RX can intentionally duplicate the payload.
 

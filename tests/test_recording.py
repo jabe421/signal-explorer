@@ -13,7 +13,7 @@ import can
 from asammdf import MDF
 from asammdf.blocks.v4_constants import FLAG_CG_BUS_EVENT
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QMessageBox
 from signal_explorer.recording.recorder import MF4Recorder
 from signal_explorer.recording.playback import MF4Playback
 from signal_explorer.recording.codecs import BusEvent, CANCodec
@@ -295,7 +295,8 @@ class MDFLogging(unittest.TestCase):
         output=self.root/'close.mf4'
         try:
             self.assertTrue(wait_for(lambda:panel.recorder.count >= 1 and window._main_tx_future is None))
-            with patch('signal_explorer.ui.recording_panel.QFileDialog.getSaveFileName',return_value=(str(output),'')):
+            with (patch('signal_explorer.ui.recording_panel.QMessageBox.exec', return_value=QMessageBox.StandardButton.Yes),
+                  patch('signal_explorer.ui.recording_panel.QFileDialog.getSaveFileName', return_value=(str(output), ''))):
                 window.close()
                 self.assertTrue(wait_for(lambda:output.exists() and not window._service.is_connected))
             self.assertIsNone(panel.recorder.pending_path)
@@ -303,6 +304,36 @@ class MDFLogging(unittest.TestCase):
             if panel.recorder.busy:
                 panel.recorder.stop();panel.recorder._thread.join(10)
             if panel.recorder.pending_path:panel.recorder.save_as(self.root/'cleanup.mf4')
+            window.close()
+
+    def test_close_can_discard_log_after_canceling_save(self):
+        window = MainWindow()
+        panel = window._recording_panel
+        panel.recorder.temp_directory = self.root
+        window._service.connect_bus(BACKENDS[0], str(uuid.uuid4()), 500000, False)
+        try:
+            panel.log.click()
+            window._send.click()
+            self.assertTrue(wait_for(lambda: panel.recorder.count >= 1 and window._main_tx_future is None))
+            with patch('signal_explorer.ui.recording_panel.QFileDialog.getSaveFileName',
+                       return_value=('', '')) as save_dialog:
+                panel.log.click()
+                self.assertTrue(wait_for(lambda: save_dialog.called))
+                temporary = panel.recorder.pending_path
+                self.assertTrue(temporary.exists())
+                with patch('signal_explorer.ui.recording_panel.QMessageBox.exec',
+                           return_value=QMessageBox.StandardButton.No):
+                    window.close()
+                    self.assertTrue(wait_for(lambda: not window._service.is_connected))
+                self.assertIsNone(panel.recorder.pending_path)
+                self.assertFalse(temporary.exists())
+                save_dialog.assert_called_once()
+        finally:
+            if panel.recorder.busy:
+                panel.recorder.stop()
+                panel.recorder._thread.join(10)
+            if panel.recorder.pending_path:
+                panel.recorder.discard_pending()
             window.close()
 
     def test_file_opening_delay_does_not_compress_replay_gaps(self):

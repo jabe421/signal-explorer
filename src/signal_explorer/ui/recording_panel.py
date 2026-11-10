@@ -126,7 +126,10 @@ class RecordingPanel(QWidget):
             QMessageBox.warning(self, "Recording incomplete", warning)
         self._refresh()
         if path:
-            self._save_log()
+            if self._closing:
+                self._resolve_unsaved_log()
+            else:
+                self._save_log()
         else:
             self.status.setText(warning or "No MDF4 recording was produced.")
             self._closing = False
@@ -237,11 +240,41 @@ class RecordingPanel(QWidget):
             self._closing = True
             self.recorder.stop()
             return False
+        if self._saving:
+            return False
         if self.recorder.pending_path:
             self._closing = True
-            self._save_log()
+            self._resolve_unsaved_log()
             return False
         return not self.playback_busy
+
+    def _resolve_unsaved_log(self):
+        self._saving = True
+        try:
+            box = QMessageBox(QMessageBox.Icon.Question, "Unsaved log file",
+                              "Save log file before exiting?", parent=self)
+            box.setInformativeText("Choose No to discard the unsaved recording.")
+            box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                                   | QMessageBox.StandardButton.Cancel)
+            box.setDefaultButton(QMessageBox.StandardButton.Yes)
+            # Escape and the window close button must never discard a recording.
+            box.setEscapeButton(QMessageBox.StandardButton.Cancel)
+            box.button(QMessageBox.StandardButton.Cancel).hide()
+            answer = box.exec()
+        finally:
+            self._saving = False
+        if answer == QMessageBox.StandardButton.Yes:
+            self._save_log()
+        elif answer == QMessageBox.StandardButton.No:
+            try:
+                self.recorder.discard_pending()
+                self.status.setText("Unsaved log discarded.")
+            except OSError as exc:
+                self._closing = False
+                QMessageBox.warning(self, "Could not discard log", str(exc))
+            self._continue_close()
+        else:
+            self._closing = False
 
     def _continue_close(self):
         if self._closing and not self.recorder.busy and not self.recorder.pending_path and not self.playback_busy:

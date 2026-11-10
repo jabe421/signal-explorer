@@ -5,6 +5,14 @@ The editor opens in its own window inside Signal Explorer. It starts with a
 private copy of the loaded database, or an empty database if none is loaded.
 Use **Open** to edit a different `.dbc` file or **New** to start from scratch.
 
+## Browse messages and signals
+
+**Messages** keeps the list by hexadecimal CAN ID. **Message Tree** expands
+messages into their signals and groups transmit and receive messages under
+network nodes. Either view selects the same message. Selecting a tree signal
+highlights it in the map. Type a partial message name or a hexadecimal or
+decimal CAN ID in the filter to narrow both tabs as you type. Click **×** to clear it.
+
 ## Basic editing
 
 - Add, edit or delete messages. Message fields include hexadecimal CAN ID,
@@ -24,8 +32,12 @@ to resize the panels. It uses byte rows and bit columns 7 through 0. Selecting a
 signal highlights its bits and shows its start, length and byte order below the
 map. Motorola start bits follow DBC sawtooth numbering:
 a signal starting at bit 7 proceeds through bit 0, then bit 15, and so on.
-Hover over a cell for its DBC bit number and signal names. The DBC preview tab
-shows the generated database text.
+Each cell shows its DBC bit number. A signal name appears once at the top of
+its colored field. Multi-bit signals show **MSB** and **LSB** at the endpoints;
+single-bit signals show the number alone. Hover for the full signal name.
+Drag the horizontal divider above **DBC preview** to show more generated text.
+The editor remembers its window size and position, divider positions, and
+signal column widths when closed.
 
 Enter a hexadecimal payload of exactly the selected message's length in
 **Test decoding** to see its decoded physical values and value labels. This is

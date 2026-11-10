@@ -103,3 +103,8 @@ selections. Select one source Recorded bus and one main TX channel; the viewer
 does not broadcast an entire multi-bus recording to multiple destinations.
 Starting replay stops the main repeated sender and multi-message TX schedules.
 Loaded TX-list JSON files belong in the Send Messages window, not Open Logfile.
+
+## Plot CAN replay
+
+Use the [Signal Graph](signal-graph.md) to plot CAN replay frames. Select
+the destination CAN channel and **Sent (TX)**, and load the matching DBC.

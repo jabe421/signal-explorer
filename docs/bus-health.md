@@ -89,7 +89,7 @@ stale data is marked after three seconds. Device/driver qualification is pending
 data. `ui/bus_health_window.py` only reads snapshots. Future signal/time-series
 graphing can be another **Analysis** window using background raw capture and
 bounded data, without coupling DBC decoding or plot rendering to the health
-model or main trace. Signal graphing remains a separate future feature.
+model or main trace. Use [Signal Graph](signal-graph.md) for decoded CAN signals.
 
 ## References and acceptance tests
 

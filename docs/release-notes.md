@@ -1,5 +1,22 @@
 # Source build release notes
 
+## November 10, 2026: DBC navigation, signal overlays, and log cleanup
+
+- **DBC editor:** The original CAN ID list sits beside a new **Message Tree**
+  with expandable signals and transmit/receive groups by network node. Filter
+  both views as you type a message name or CAN ID.
+- **DBC layout and bit map:** Resize the DBC preview with a vertical divider.
+  The editor remembers its window, dividers, and signal column widths. The
+  color-coded bit map displays DBC bit numbers and one label per visible
+  signal field, with MSB/LSB markers for multi-bit signals.
+- **Signal Graph:** Use **Add To** to overlay signals on an existing plot.
+  Overlays have contrasting colors and share a vertical scale. For CAN
+  replay, choose the destination channel and **Sent (TX)**.
+- **Unsaved recordings:** On exit, choose **Yes** to save or **No** to discard
+  the pending log and close. Canceling Save keeps the recording available.
+- **Documentation:** Refreshed the User’s Guide, companion guides, and
+  reference pages for these workflows.
+
 ## November 6, 2026: separate CAN Bus Health window
 
 Add **Analysis > CAN Bus Health...** with per-channel frame-based load ranges,
@@ -8,7 +25,7 @@ controller diagnostics. Show driver load separately from estimates and preserve
 Unavailable/stale values. Separate display/script losses and recorder status.
 Use bounded capture-side metrics and asynchronous read-only native queries;
 trace filtering and display pause do not affect health observations. The main
-trace layout is unchanged, leaving signal graphing as a separate future window.
+trace layout was unchanged in that update.
 See [bus-health.md](bus-health.md) for backend support and measurement limits.
 Validation: 272 tests pass, with native behavior covered by mocks and virtual
 traffic. Physical load/error-state qualification remains in Action Items.xlsx.

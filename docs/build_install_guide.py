@@ -26,7 +26,7 @@ def page(title,subtitle):
 def link(label,url):
     p(f'<link href="{url}" color="#126C79"><u>{label}</u></link>','SmallSE')
 
-page('Install guide','Signal Explorer | Windows source installation<br/>Version 0.1.0 - Multi-channel CAN and live TX lists<br/>Document revision 1.5 - November 2, 2026')
+page('Install guide','Signal Explorer | Windows source installation<br/>Version 0.1.0 - Multi-channel CAN and live TX lists<br/>Document revision 1.6 - November 10, 2026')
 p('This guide installs the current Python desktop application on another PC. A standalone installer will be addressed later. You need internet access for the initial Python package downloads and any required driver downloads.')
 h('1. Prepare the PC and project files')
 p('Install <b>64-bit Python 3.12</b> and its Python launcher. This is the version used on the development PC. The project declares Python 3.11 or later, but other versions have not been validated here.')
@@ -85,7 +85,7 @@ p('For optional checks, copy tests and install the test dependencies with pip in
 code('.\\.venv\\Scripts\\python.exe -m pytest tests -q')
 p('196 automated checks pass, including adapter preferences, DBC editing and NI-XNET mocks. USB-8502 traffic, Ethernet TX and powered ValueCAN LIN/Ethernet await bench tests.','SmallSE')
 h('Logging and playback')
-p('Click <b>Start Logging</b> to record RX and TX; <b>Stop Logging</b> finalizes the MDF4 file and opens a save dialog. Cancelling retains it for <b>Save Log...</b>. Logging continues while the trace is paused or filtered. <b>Playback Log as TX</b> replays a selected recorded bus/direction at best-effort 1x timing through the connected adapter; <b>Stop Playback</b> stops it. Physical timing and third-party interoperability are not yet qualified.')
+p('Click <b>Start Logging</b> to record RX and TX; <b>Stop Logging</b> finalizes the MDF4 file and opens a save dialog. Canceling retains it for <b>Save Log...</b>. On exit, choose <b>No</b> at the save prompt to discard the pending log. Logging continues while the trace is paused or filtered. <b>Playback Log as TX</b> replays a selected recorded bus/direction at best-effort 1x timing through the connected adapter; <b>Stop Playback</b> stops it. Physical timing and third-party interoperability are not yet qualified.')
 h('Current scope')
 p('CAN supports Classic/FD. LIN offers simulated Monitor/Master/Slave and experimental native Intrepid, Vector XL and PEAK PLIN. Ethernet now offers an isolated simulator, Windows PC Ethernet through Npcap, and ValueCAN4-2EL Ethernet. Sending, repeat, filters and MF4/replay are available. Ethernet setup is on pages 5-6. SENT, CAN XL and a packaged installer remain future work.')
 p('DBC files are optional; copy the files you intend to use separately. No compiler is normally needed when compatible prebuilt Python wheels are available. Record working package versions for reproducible deployments; the current project uses minimum version constraints rather than a pinned dependency lock.','SmallSE')
@@ -219,7 +219,7 @@ def decorate(canvas,doc):
     canvas.line(43,h-29,w-43,h-29)
     canvas.setFont('Helvetica',8)
     canvas.setFillColor(colors.HexColor('#446170'))
-    canvas.drawString(43,25,'SIGNAL EXPLORER  /  INSTALL GUIDE  /  REV 1.5  /  NOV 2, 2026')
+    canvas.drawString(43,25,'SIGNAL EXPLORER  /  INSTALL GUIDE  /  REV 1.6  /  NOV 10, 2026')
     canvas.drawRightString(w-43,25,str(doc.page))
 
 doc=SimpleDocTemplate(str(output),pagesize=letter,rightMargin=43,leftMargin=43,topMargin=46,bottomMargin=43,title='Install guide - Signal Explorer',author='Signal Explorer')

@@ -4,10 +4,11 @@ os.environ['QT_QPA_PLATFORM'] = 'offscreen'
 from pathlib import Path
 import tempfile
 import time
+import sys
 from unittest.mock import patch
 from PySide6.QtCore import QSettings
 from PySide6.QtGui import QFont, QFontDatabase
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QTabWidget
 from signal_explorer.ui.main_window import MainWindow
 from signal_explorer.bus.demo import demo_frames
 
@@ -18,6 +19,9 @@ for name in ('arial.ttf', 'arialbd.ttf', 'consola.ttf', 'consolab.ttf'):
     QFontDatabase.addApplicationFont('C:/Windows/Fonts/' + name)
 app.setFont(QFont('Arial', 9))
 with tempfile.TemporaryDirectory() as folder:
+    app.setOrganizationName('Signal Explorer Guide Capture')
+    QSettings.setDefaultFormat(QSettings.Format.IniFormat)
+    QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, folder)
     settings = QSettings(str(Path(folder) / 'figures.ini'), QSettings.Format.IniFormat)
     with patch('signal_explorer.ui.adapter_preferences.QSettings', return_value=settings):
         window = MainWindow()
@@ -31,9 +35,17 @@ with tempfile.TemporaryDirectory() as folder:
         while time.monotonic() < deadline:
             app.processEvents()
             time.sleep(.01)
-        window.grab().save(str(OUT/'can.png'))
+        if '--dbc-only' not in sys.argv:
+            window.grab().save(str(OUT/'can.png'))
         editor = window._open_dbc_editor()
+        editor.resize(1500, 850)
+        editor.splitters['messages_splitter'].setSizes([360, 1140])
+        editor.splitters['map_splitter'].setSizes([540, 600])
+        editor.splitters['preview_splitter'].setSizes([370, 200])
         editor.messages.setCurrentRow(next(i for i,m in enumerate(editor.document.database.messages) if m.frame_id == 0x200))
+        editor.message_tree.expandItem(editor.message_tree.currentItem())
+        tabs = next(tabs for tabs in editor.findChildren(QTabWidget) if tabs.indexOf(editor.message_tree) >= 0)
+        tabs.setCurrentWidget(editor.message_tree)
         editor.signals.setCurrentCell(0, 0)
         editor.payload.setText(next(m for m in demo_frames(42, False) if m.arbitration_id == 0x200).data.hex(' '))
         app.processEvents()

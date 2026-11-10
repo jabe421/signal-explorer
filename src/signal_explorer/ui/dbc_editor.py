@@ -6,14 +6,36 @@ import cantools
 from cantools.database.can import Message, Signal as CanSignal
 from cantools.database.conversion import BaseConversion
 from signal_explorer.dbc.document import DbcDocument, identifier, number, signal_bits, validate_database
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QAction, QColor, QKeySequence
+from PySide6.QtCore import QByteArray, QSettings, Qt, Signal
+from PySide6.QtGui import QAction, QColor, QKeySequence, QPainter
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout,
     QHBoxLayout, QLabel, QLineEdit, QListWidget, QMainWindow, QMessageBox,
     QPlainTextEdit, QPushButton, QSpinBox, QSplitter, QTableWidget, QHeaderView,
-    QTableWidgetItem, QTabWidget, QToolBar, QVBoxLayout, QWidget,
+    QTableWidgetItem, QTabWidget, QToolBar, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
 )
+
+
+class MessageBitMap(QTableWidget):
+    def __init__(self):
+        super().__init__(0, 8)
+        self.signal_labels = []
+        self.verticalHeader().setDefaultSectionSize(2 * self.fontMetrics().height() + 8)
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        painter = QPainter(self.viewport())
+        painter.setPen(QColor('#111111'))
+        for row, first, last, name in self.signal_labels:
+            bounds = self.visualItemRect(self.item(row, first)).united(
+                self.visualItemRect(self.item(row, last))
+            )
+            if not bounds.intersects(event.rect()):
+                continue
+            bounds.adjust(3, 1, -3, 0)
+            label = self.fontMetrics().elidedText(name, Qt.TextElideMode.ElideRight, bounds.width())
+            painter.drawText(bounds, Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft, label)
+        painter.end()
 
 
 class PropertiesDialog(QDialog):
@@ -148,6 +170,12 @@ class DbcEditorWindow(QMainWindow):
         self.resize(1400, 800)
         self._build()
         self.refresh()
+        settings = QSettings()
+        settings.beginGroup('dbc_editor')
+        self.restoreGeometry(settings.value('geometry', QByteArray()))
+        for key, splitter in self.splitters.items():
+            splitter.restoreState(settings.value(key, QByteArray()))
+        self.signals.horizontalHeader().restoreState(settings.value('signal_columns', QByteArray()))
 
     @property
     def path(self):
@@ -184,11 +212,27 @@ class DbcEditorWindow(QMainWindow):
         splitter = QSplitter()
         left = QWidget()
         left_layout = QVBoxLayout(left)
-        left_layout.addWidget(QLabel('Messages (CAN ID in hex)'))
+        self.message_filter = QLineEdit()
+        self.message_filter.setPlaceholderText('Filter messages by name or CAN ID')
+        self.message_filter.setAccessibleName('Filter messages')
+        self.message_filter.setClearButtonEnabled(True)
+        left_layout.addWidget(self.message_filter)
+        message_tabs = QTabWidget()
+        message_list_panel = QWidget()
+        message_list_layout = QVBoxLayout(message_list_panel)
+        message_list_layout.addWidget(QLabel('Messages (CAN ID in hex)'))
         self.messages = QListWidget()
         self.messages.currentRowChanged.connect(self.select_message)
         self.messages.itemDoubleClicked.connect(lambda *_: self.edit_message())
-        left_layout.addWidget(self.messages)
+        message_list_layout.addWidget(self.messages)
+        message_tabs.addTab(message_list_panel, 'Messages')
+        self.message_tree = QTreeWidget()
+        self.message_tree.setHeaderHidden(True)
+        self.message_tree.currentItemChanged.connect(self.select_tree_item)
+        self.message_tree.itemDoubleClicked.connect(self.edit_tree_message)
+        message_tabs.addTab(self.message_tree, 'Message Tree')
+        left_layout.addWidget(message_tabs)
+        self.message_filter.textChanged.connect(self.filter_messages)
         self.buttons(left_layout, [('Add', self.add_message), ('Edit', self.edit_message), ('Delete', self.delete_message)])
         splitter.addWidget(left)
         right = QWidget()
@@ -197,6 +241,8 @@ class DbcEditorWindow(QMainWindow):
         layout.addWidget(self.summary)
         self.signals = QTableWidget(0, 9)
         self.signals.setHorizontalHeaderLabels(['Signal', 'Start', 'Bits', 'Order', 'Signed', 'Factor', 'Offset', 'Unit', 'Range'])
+        self.signals.resizeColumnsToContents()
+        self.signals.setColumnWidth(0, 150)
         self.signals.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.signals.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.signals.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -212,10 +258,11 @@ class DbcEditorWindow(QMainWindow):
         map_layout = QVBoxLayout(map_panel)
         map_layout.setContentsMargins(0, 0, 0, 0)
         map_layout.addWidget(QLabel('Message map — payload bytes × bits'))
-        self.bits = QTableWidget(0, 8)
+        self.bits = MessageBitMap()
         self.bits.setHorizontalHeaderLabels([str(i) for i in range(7, -1, -1)])
         self.bits.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.bits.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.bits.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
         map_layout.addWidget(self.bits)
         self.map_selection = QLabel('Select a signal to highlight its payload bits.')
         self.map_selection.setWordWrap(True)
@@ -226,12 +273,16 @@ class DbcEditorWindow(QMainWindow):
         self.signal_map_splitter.setStretchFactor(0, 3)
         self.signal_map_splitter.setStretchFactor(1, 2)
         self.signal_map_splitter.setSizes([650, 470])
-        layout.addWidget(self.signal_map_splitter, 3)
         tabs = QTabWidget()
         self.syntax = QPlainTextEdit()
         self.syntax.setReadOnly(True)
         tabs.addTab(self.syntax, 'DBC preview')
-        layout.addWidget(tabs, 1)
+        preview_splitter = QSplitter(Qt.Orientation.Vertical)
+        preview_splitter.setChildrenCollapsible(False)
+        preview_splitter.addWidget(self.signal_map_splitter)
+        preview_splitter.addWidget(tabs)
+        preview_splitter.setSizes([450, 150])
+        layout.addWidget(preview_splitter, 1)
         layout.addWidget(QLabel('Test decoding (offline only; no CAN transmission)'))
         self.payload = QLineEdit()
         self.payload.setPlaceholderText('Hex payload, e.g. FF F0')
@@ -244,6 +295,11 @@ class DbcEditorWindow(QMainWindow):
         splitter.addWidget(right)
         splitter.setStretchFactor(1, 3)
         self.setCentralWidget(splitter)
+        self.splitters = {
+            'messages_splitter': splitter,
+            'map_splitter': self.signal_map_splitter,
+            'preview_splitter': preview_splitter,
+        }
 
     def buttons(self, layout, definitions):
         row = QHBoxLayout()
@@ -266,10 +322,100 @@ class DbcEditorWindow(QMainWindow):
             self.messages.addItem(f'{message.frame_id:X}  {message.name}' + (' [EXT]' if message.is_extended_frame else ''))
         self.messages.setCurrentRow(min(row, len(self.document.database.messages)-1))
         self.messages.blockSignals(False)
+        self.refresh_message_tree()
+        self.filter_messages()
         self.select_message()
         self.setWindowTitle(f"{'* ' if self.document.dirty else ''}{self.document.path or 'Untitled.dbc'} - Signal Explorer DBC Editor")
 
+    def refresh_message_tree(self):
+        database = self.document.database
+        self.message_tree.clear()
+        root = QTreeWidgetItem(self.message_tree, [self.path.name if self.path else 'Untitled.dbc'])
+        messages = QTreeWidgetItem(root, ['Messages'])
+        nodes = QTreeWidgetItem(root, ['Network Nodes'])
+        self.tree_messages = []
+        routes = {
+            node.name: {'Tx Messages': [], 'Rx Messages': []}
+            for node in database.nodes
+        }
+        for row, message in enumerate(database.messages):
+            label = f'{message.name} [0x{message.frame_id:X}]'
+            item = QTreeWidgetItem(messages, [label])
+            item.setData(0, Qt.ItemDataRole.UserRole, (row, -1))
+            self.tree_messages.append(item)
+            for signal_row, signal in enumerate(message.signals):
+                child = QTreeWidgetItem(item, [signal.name])
+                child.setData(0, Qt.ItemDataRole.UserRole, (row, signal_row))
+            for names, direction in ((message.senders, 'Tx Messages'), (message.receivers, 'Rx Messages')):
+                for name in set(names) & routes.keys():
+                    routes[name][direction].append((row, label))
+        for name, directions in routes.items():
+            node = QTreeWidgetItem(nodes, [name])
+            for direction, entries in directions.items():
+                if entries:
+                    branch = QTreeWidgetItem(node, [direction])
+                    for row, label in entries:
+                        item = QTreeWidgetItem(branch, [label])
+                        item.setData(0, Qt.ItemDataRole.UserRole, (row, -1))
+        self.message_tree.expandToDepth(1)
+
+    def filter_messages(self):
+        query = self.message_filter.text().strip().casefold()
+        visible_rows = set()
+        for row, message in enumerate(self.document.database.messages):
+            frame_id = message.frame_id
+            matches = (
+                not query
+                or query in message.name.casefold()
+                or query in f'{frame_id:x}'
+                or query in f'0x{frame_id:x}'
+                or query in str(frame_id)
+            )
+            self.messages.item(row).setHidden(not matches)
+            if matches:
+                visible_rows.add(row)
+
+        def filter_branch(item):
+            target = item.data(0, Qt.ItemDataRole.UserRole)
+            if target is not None:
+                visible = target[0] in visible_rows
+            else:
+                children = [filter_branch(item.child(index)) for index in range(item.childCount())]
+                visible = item.parent() is None or not query or any(children)
+                if query and visible:
+                    item.setExpanded(True)
+            item.setHidden(not visible)
+            return visible
+
+        filter_branch(self.message_tree.topLevelItem(0))
+        if self.messages.currentRow() not in visible_rows:
+            self.messages.setCurrentRow(min(visible_rows, default=-1))
+        if not visible_rows:
+            self.message_tree.setCurrentItem(None)
+
+    def select_tree_item(self, item, _previous):
+        target = item.data(0, Qt.ItemDataRole.UserRole) if item else None
+        if target is None:
+            return
+        row, signal_row = target
+        self.messages.setCurrentRow(row)
+        if signal_row >= 0:
+            self.signals.setCurrentCell(signal_row, 0)
+
+    def edit_tree_message(self, item, _column):
+        target = item.data(0, Qt.ItemDataRole.UserRole)
+        if target is not None:
+            if target[1] >= 0:
+                self.edit_signal()
+            else:
+                self.edit_message()
+
     def select_message(self, *_):
+        row = self.messages.currentRow()
+        item = self.message_tree.currentItem()
+        target = item.data(0, Qt.ItemDataRole.UserRole) if item else None
+        if row >= 0 and (target is None or target[0] != row):
+            self.message_tree.setCurrentItem(self.tree_messages[row])
         message = self.current_message()
         self.signals.blockSignals(True)
         self.signals.setRowCount(0)
@@ -283,7 +429,6 @@ class DbcEditorWindow(QMainWindow):
                     'Yes' if signal.is_signed else 'No', signal.scale, signal.offset,
                     signal.unit or '', f'{signal.minimum} .. {signal.maximum}')):
                     self.signals.setItem(row, col, QTableWidgetItem(str(value)))
-            self.signals.resizeColumnsToContents()
         self.signals.blockSignals(False)
         self.preview()
 
@@ -371,12 +516,22 @@ class DbcEditorWindow(QMainWindow):
 
     def preview(self):
         message = self.current_message()
+        self.bits.signal_labels = []
         self.bits.setRowCount(message.length if message else 0)
+        minimum_width = self.bits.fontMetrics().horizontalAdvance('511') + 8
         self.map_selection.setText('Select a signal to highlight its payload bits.')
         if message:
             owners = {}
-            for signal in message.signals:
-                for bit in signal_bits(signal):
+            colors = {}
+            endpoints = {}
+            for index, signal in enumerate(message.signals):
+                color = QColor.fromHsv(index * 137 % 360, 130, 200)
+                colors[signal.name] = color
+                self.signals.item(index, 0).setData(Qt.ItemDataRole.DecorationRole, color)
+                bits = signal_bits(signal)
+                lsb, msb = (bits[0], bits[-1]) if signal.byte_order == 'little_endian' else (bits[-1], bits[0])
+                endpoints[signal.name] = {} if lsb == msb else {lsb: 'LSB', msb: 'MSB'}
+                for bit in bits:
                     owners.setdefault(bit, []).append(signal.name)
             selected = self.signals.currentRow()
             selected_name = message.signals[selected].name if 0 <= selected < len(message.signals) else None
@@ -384,16 +539,44 @@ class DbcEditorWindow(QMainWindow):
                 signal = message.signals[selected]
                 self.map_selection.setText(f'{signal.name}: start bit {signal.start}, {signal.length} bits, '
                                            f'{"Intel" if signal.byte_order == "little_endian" else "Motorola"}')
+            labeled = set()
             for byte in range(message.length):
                 self.bits.setVerticalHeaderItem(byte, QTableWidgetItem(f'Byte {byte}'))
+                row_owners = []
                 for col in range(8):
-                    names = owners.get(byte*8 + 7-col, [])
-                    label = '/'.join(names)
-                    cell = QTableWidgetItem((label[:8] + '…' if len(label) > 9 else label) if names else '—')
-                    cell.setToolTip(f'DBC bit {byte*8+7-col}: ' + ', '.join(names))
+                    bit = byte * 8 + 7 - col
+                    names = owners.get(bit, [])
+                    cell = QTableWidgetItem(str(bit))
+                    cell.setTextAlignment(Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignRight)
+                    cell.setToolTip(f'DBC bit {bit}: ' + ', '.join(names))
                     if selected_name in names:
-                        cell.setBackground(QColor('#b7d9f7'))
+                        cell.setBackground(colors[selected_name].lighter(125))
+                        owner = selected_name
+                    elif names:
+                        cell.setBackground(colors[names[0]])
+                        owner = names[0]
+                    else:
+                        owner = None
+                    if owner is not None:
+                        cell.setForeground(QColor('#111111'))
+                        marker = endpoints[owner].get(bit)
+                        if marker:
+                            text = f'{marker} {bit}'
+                            cell.setText(text)
+                            minimum_width = max(minimum_width, self.bits.fontMetrics().horizontalAdvance(text) + 8)
+                            cell.setToolTip(f'{cell.toolTip()} ({marker} of {owner})')
+                    row_owners.append(owner)
                     self.bits.setItem(byte, col, cell)
+                for col, owner in enumerate(row_owners):
+                    if owner is None or owner in labeled:
+                        continue
+                    last = col
+                    while last + 1 < len(row_owners) and row_owners[last + 1] == owner:
+                        last += 1
+                    self.bits.signal_labels.append((byte, col, last, owner))
+                    labeled.add(owner)
+        self.bits.horizontalHeader().setMinimumSectionSize(minimum_width)
+        self.bits.viewport().update()
         try:
             self.syntax.setPlainText(self.document.database.as_dbc_string())
         except Exception as exc:
@@ -499,5 +682,11 @@ class DbcEditorWindow(QMainWindow):
         if not self.confirm_save():
             event.ignore()
             return
+        settings = QSettings()
+        settings.beginGroup('dbc_editor')
+        settings.setValue('geometry', self.saveGeometry())
+        for key, splitter in self.splitters.items():
+            settings.setValue(key, splitter.saveState())
+        settings.setValue('signal_columns', self.signals.horizontalHeader().saveState())
         self.closed.emit(self)
         event.accept()

@@ -61,6 +61,8 @@ are unchanged. Earlier DBC editor and NI-XNET setup instructions are retained.
 See [release notes](docs/release-notes.md) for the complete November 2 change list
 and hardware validation scope.
 
+See the [DBC editor guide](docs/dbc-editor.md) for the message tree, live filter and bit map, and the [Signal Graph guide](docs/signal-graph.md) for CAN plots, overlays and replay.
+
 See [Users Guide.pdf](Users%20Guide.pdf) for operation, UI reference, workflows,
 troubleshooting and model-specific connector maps, and [Install Guide.pdf](Install%20Guide.pdf)
 for deployment. The user guide follows the supplied Kvaser manual's layout conventions.
@@ -402,7 +404,7 @@ Connect an adapter or virtual bus, then **Start Logging**. The button becomes
 including Classic CAN, CAN FD flags/payloads, remote frames and error frames.
 Capture is independent of trace filtering, Clear and Pause Exploring. Stopping
 finalizes the recording in a background worker, then prompts for a `.mf4` filename.
-Cancelling keeps the recording: use **Save Log...** later. Starting another log
+Canceling keeps the recording for **Save Log...**. On exit, **Yes** opens Save and **No** discards the pending recording and continues closing. Starting another log
 is disabled until that recording is saved. Save failures retain the temporary
 original. Disconnect and normal application close also finalize and prompt;
 cancelling a save during close keeps the app open.

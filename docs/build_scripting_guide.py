@@ -88,7 +88,7 @@ story.append(Image(str(ROOT/'src/signal_explorer/assets/signal-explorer-splash.p
 story.append(Spacer(1,20))
 p('SIGNAL EXPLORER','Cover');p("Scripting User's Guide",'Cover')
 p('Basic Python for CAN / CAN FD and MCU testing','Center')
-p('Application 0.1.0 | Document revision 1.3<br/>November 5, 2026','Center')
+p('Application 0.1.0 | Document revision 1.4<br/>November 10, 2026','Center')
 story.append(Spacer(1,14))
 p('Learn the editor, send and receive frames, validate responses, check counters and signals, and build repeatable MCU tests. Nine commented example files accompany this guide.','Center')
 note('This guide uses the current injected <b>se</b> API. Python scripting is CAN/CAN FD only. The generic MCU protocol is fictional and must match your test firmware; the built-in virtual demo is a separate, smaller protocol.')
@@ -461,7 +461,7 @@ p('Put reusable conversions and response validation in local Python modules save
 page('9 Logging, replay and timestamps','evidence')
 steps(['Before Run, press Start Logging in CAN / CAN FD. The logger captures both shared RX and local TX independently of display filters or pause.',
        'Run the test. Keep the script revision, firmware version, DBC version, adapter/channel, rate and expected outcome with the result.',
-       'Stop the script as needed, then Stop Logging and save the MF4. Cancelling the save dialog retains the temporary log for Save Log....',
+       'Stop the script as needed, then Stop Logging and save the MF4. Canceling Save retains the temporary log for Save Log.... On exit, choose No at the save prompt only if you want to discard that recording.',
        'Choose File Viewer &gt; Open Logfile. Inspect read-only rows; connect the intended destination to replay RX, TX or both from the selected recorded bus.',
        'Replay uses recorded gaps. In a request/response test, replaying both directions can transmit historical ECU responses as tester traffic; choose TX only when that is the intended stimulus.'])
 figure('log-replay.png','Figure 2: Replay Output and per-row highlighting in log mode.',250)
@@ -549,7 +549,7 @@ steps(['Start with one status/heartbeat arrival check and a known firmware-versi
        'Add reboot recovery, expected command rejection and explicit timeouts.',
        'Store test and firmware revisions alongside MF4 evidence, then verify on the intended physical adapter.'])
 note('SENT, LIN/Ethernet Python scripting, automatic CAPL translation, complete UDS/ISO-TP, fixture power control and integrated test-report export remain future work. Standard Python can write your own report files, but the application does not supply a report API in this release.')
-p('Revision 1.3 - November 5, 2026. Adds driver TX reports, CAN clock provenance and recording diagnostics alongside retained receive history, loss counters, capture filters and event-driven waits. Companion to User Guide revision 1.7; installation dependencies are unchanged.','Small')
+p('Revision 1.3 - November 5, 2026. Adds driver TX reports, CAN clock provenance and recording diagnostics alongside retained receive history, loss counters, capture filters and event-driven waits. Revision 1.4 - November 10, 2026. Documents the unsaved-log prompt. Companion to User Guide revision 1.8; installation dependencies are unchanged.','Small')
 
 
 class ManualDoc(SimpleDocTemplate):
@@ -564,7 +564,7 @@ def decorate(canvas,doc):
         canvas.setFont('Helvetica-Bold',9);canvas.drawString(52,H-36,"Signal Explorer Scripting User's Guide")
         canvas.line(52,H-41,W-52,H-41)
     canvas.line(52,40,W-52,40);canvas.setFont('Helvetica',8)
-    canvas.drawString(52,26,'SIGNAL EXPLORER  |  Revision 1.3  |  November 5, 2026')
+    canvas.drawString(52,26,'SIGNAL EXPLORER  |  Revision 1.4  |  November 10, 2026')
     canvas.drawRightString(W-52,26,str(doc.page));canvas.restoreState()
 
 if __name__=='__main__':
