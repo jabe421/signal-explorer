@@ -11,6 +11,10 @@ class LogWindow(ScriptWindow):
     def __init__(self, panels, parent=None):
         controller = LogReplayController(panels)
         super().__init__(controller, parent)
+        from signal_explorer.ui.asammdf_tool import open_in_asammdf
+        file_menu = self.menuBar().actions()[0].menu()
+        file_menu.addAction('Open in asammdf...').triggered.connect(
+            lambda: open_in_asammdf(self, self.path))
         controller.setParent(self)
         self.editor.highlighter.setDocument(None)
         self.output_label.setText('Replay Output')

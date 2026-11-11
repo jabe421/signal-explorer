@@ -1,5 +1,12 @@
 # Source build release notes
 
+## November 10, 2026: launch the asammdf companion GUI
+
+Open recordings in the extracted asammdf GUI from File Viewer. The first
+launch prompts for the executable location and offers Browse and Download
+asammdf buttons. Change the saved location under Settings. The log viewer
+passes its current recording directly to asammdf.
+
 ## November 10, 2026: DBC navigation, signal overlays, and log cleanup
 
 - **DBC editor:** The original CAN ID list sits beside a new **Message Tree**

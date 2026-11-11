@@ -172,11 +172,15 @@ class MainWindow(QMainWindow):
 
     def _build(self) -> None:
         scripts = self.menuBar().addMenu('File Viewer')
+        from signal_explorer.ui.asammdf_tool import configure_asammdf, open_in_asammdf
         for title, callback in (('New Python Script', lambda:self._open_script(new=True)),
                                 ('Open Python Script...', self._open_script),
                                 ('Open Logfile', self._open_logfile),
                                 ('Open CAN Simulation Example', self._open_demo_script)):
             action=QAction(title,self);action.triggered.connect(callback);scripts.addAction(action)
+        scripts.addAction('Open in asammdf...').triggered.connect(lambda: open_in_asammdf(self))
+        settings_menu = self.menuBar().addMenu('Settings')
+        settings_menu.addAction('asammdf location...').triggered.connect(lambda: configure_asammdf(self))
         transmit = self.menuBar().addMenu('Transmit')
         sender_action = QAction('Multi-message sender...', self)
         sender_action.triggered.connect(self._open_transmit_window)

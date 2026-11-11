@@ -108,3 +108,16 @@ Loaded TX-list JSON files belong in the Send Messages window, not Open Logfile.
 
 Use the [Signal Graph](signal-graph.md) to plot CAN replay frames. Select
 the destination CAN channel and **Sent (TX)**, and load the matching DBC.
+
+## Open recordings in asammdf
+
+Choose **File Viewer → Open in asammdf...** in the main window to select a
+recording, or **File → Open in asammdf...** inside the log viewer to open its
+current recording.
+
+On first use, type the executable path or use **Browse...** to find it.
+**Download asammdf** opens the Windows ZIP link in your browser. Extract the
+ZIP and select the GUI executable, keeping its supporting files together.
+
+Signal Explorer remembers the path. Change it under **Settings → asammdf
+location...**. If the executable moves, the app asks for its location again.
