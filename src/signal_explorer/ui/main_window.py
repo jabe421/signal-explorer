@@ -1212,11 +1212,16 @@ class MainWindow(QMainWindow):
             self.installer_on_exit = self._pending_update
             self._pending_update = None
             if self._update_dialog is not None:
-                self._update_dialog.close()
+                if self.installer_on_exit is not None:
+                    self._update_dialog.finish_install_shutdown(cancelled=False)
+                else:
+                    self._update_dialog.close()
         elif self._pending_update is not None and not self._close_after_disconnect:
             from signal_explorer.updates import discard_installer
             discard_installer(self._pending_update)
             self._pending_update = None
+            if self._update_dialog is not None:
+                self._update_dialog.finish_install_shutdown(cancelled=True)
 
     def _close_main(self, event):
         if self._service.busy:

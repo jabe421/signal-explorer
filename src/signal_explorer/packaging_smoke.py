@@ -69,6 +69,10 @@ def main(report_path):
         return target
 
     try:
+        import ics
+
+        check(hasattr(ics.structures, 's_extended_data_flash_header') and callable(ics.find_devices),
+              'Intrepid Python binding and generated structures import')
         with tempfile.TemporaryDirectory(prefix='SignalExplorer-packaging-') as folder:
             folder = Path(folder)
             QSettings.setDefaultFormat(QSettings.Format.IniFormat)

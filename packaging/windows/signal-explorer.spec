@@ -1,10 +1,14 @@
 """Two entry points share one analysis and one onedir dependency folder."""
 from pathlib import Path
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy_metadata
+from ics.hiddenimports import hidden_imports as ics_hidden_imports
 
 root = Path(SPECPATH).resolve().parents[1]
 datas = collect_data_files('signal_explorer', includes=['assets/*', 'lin/*.ldf', 'scripting/demo_can.py'])
-datas += [(str(root/'src/signal_explorer/scripting/demo_can.py'), 'signal_explorer/scripting')]
+datas += [
+    (str(root/'src/signal_explorer/scripting/demo_can.py'), 'signal_explorer/scripting'),
+    (str(root/'src/signal_explorer/assets/Driver Setup.txt'), 'signal_explorer/assets'),
+]
 datas += collect_data_files('asammdf')
 for distribution in ('signal-explorer', 'python-can', 'asammdf', 'cantools', 'ldfparser', 'python-ics', 'nixnet',
                      'PySide6-Essentials', 'pyserial', 'gs-usb', 'pyusb'):
@@ -21,6 +25,8 @@ hidden = [
     'socket', 'ipaddress', 'hashlib', 'logging', 'threading', 'queue', 'enum',
 ]
 hidden += collect_submodules('nixnet')
+# python-ics loads these generated structures dynamically.
+hidden += ics_hidden_imports
 
 a = Analysis([str(root/'packaging/windows/launcher.py')], pathex=[str(root/'src')],
              binaries=[], datas=datas, hiddenimports=hidden,

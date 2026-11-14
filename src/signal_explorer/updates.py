@@ -100,7 +100,7 @@ def find_update(installed, include_beta):
     return UpdateCheck(latest_version, best, latest_notes)
 
 
-def download_update(update):
+def download_update(update, *, progress=None):
     directory = Path(tempfile.mkdtemp(prefix="signal-explorer-update-"))
     path = directory / update.name
     digest = hashlib.sha256()
@@ -115,6 +115,8 @@ def download_update(update):
                     raise ValueError("The installer exceeds the published download size.")
                 digest.update(block)
                 file.write(block)
+                if progress is not None:
+                    progress(received, update.size)
         if received != update.size or digest.hexdigest() != update.digest:
             raise ValueError("The installer failed SHA-256 verification.")
         return path

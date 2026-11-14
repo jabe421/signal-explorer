@@ -85,8 +85,11 @@ def test_update_button_downloads_and_hands_off_verified_installer(monkeypatch, t
     handoff = []
     attempts = []
 
-    def download(update):
+    def download(update, *, progress):
         attempts.append(update)
+        progress(60, 120)
+        dialog._receive_result()
+        assert dialog._progress.value() == 50
         return installer
 
     class ImmediateThread:
@@ -118,7 +121,16 @@ def test_update_button_downloads_and_hands_off_verified_installer(monkeypatch, t
         assert attempts == [candidate]
         assert handoff == []
         dialog._receive_result()
+        assert dialog._progress.value() == 100
+        assert "Closing Signal Explorer" in dialog._status.text()
+        assert not update_button.isEnabled()
+        assert handoff == []
+        app.processEvents()
         assert handoff == [installer]
+        dialog.finish_install_shutdown(cancelled=True)
+        assert "Update canceled" in dialog._status.text()
+        assert dialog._progress.isHidden()
+        assert update_button.isEnabled()
     finally:
         dialog.close()
         app.processEvents()
@@ -133,8 +145,10 @@ def test_download_requires_matching_digest_and_size(monkeypatch, tmp_path, paylo
     expected = b"installer"
     update = updates.Update("0.3.0", "", "Setup.exe", "https://github.com/installer",
                             hashlib.sha256(expected).hexdigest(), len(expected))
+    progress = []
     if payload == expected:
-        assert updates.download_update(update).read_bytes() == expected
+        assert updates.download_update(update, progress=lambda *args: progress.append(args)).read_bytes() == expected
+        assert progress == [(len(expected), len(expected))]
     else:
         with pytest.raises(ValueError):
             updates.download_update(update)
