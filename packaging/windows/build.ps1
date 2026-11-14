@@ -1,11 +1,12 @@
 param(
-    [string]$Version = '0.1.0-beta.2',
+    [string]$Version = '0.4.0-beta.2',
     [string]$Python = 'python',
+    [string]$NiCanHelper,
     [switch]$SkipInstaller
 )
 $ErrorActionPreference = 'Stop'
 if ($Version -notmatch '^\d+\.\d+\.\d+(?:-[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*)?$') {
-    throw 'Version must look like 0.1.0 or 0.1.0-beta.2.'
+    throw 'Version must look like 0.4.0 or 0.4.0-beta.2.'
 }
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 Push-Location -LiteralPath $projectRoot
@@ -17,6 +18,11 @@ try {
     & $Python packaging/windows/stage.py --version $Version
     if ($LASTEXITCODE -ne 0) { throw 'Release staging failed.' }
     $bundleRoot = Join-Path $projectRoot 'dist/SignalExplorer'
+    if ($NiCanHelper) {
+        Copy-Item -LiteralPath $NiCanHelper -Destination (Join-Path $bundleRoot 'nican') -Recurse
+        $bits = & (Join-Path $bundleRoot 'nican/SignalExplorer-NICAN.exe') --probe
+        if ($LASTEXITCODE -ne 0 -or $bits -ne '32') { throw 'The staged NI-CAN helper did not run as a 32-bit process.' }
+    }
     $smokeReport = Join-Path $projectRoot 'build/packaging-smoke.json'
     # Run from a non-project directory: no accidental imports from the checkout.
     Push-Location -LiteralPath $env:TEMP

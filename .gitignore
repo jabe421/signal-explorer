@@ -1,5 +1,6 @@
 .venv/
 .venv-build/
+.venv-build-nican/
 venv/
 __pycache__/
 *.py[cod]
@@ -16,6 +17,7 @@ build/
 .vscode/
 tmp/
 *.mf4
+!/examples/demo_board.mf4
 
 # Local project action tracker
 /Action Items.xlsx

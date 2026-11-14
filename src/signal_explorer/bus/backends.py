@@ -77,7 +77,14 @@ BACKENDS: tuple[BackendSpec, ...] = (
         label="NI (USB-8502 / NI-XNET)",
         interface="nixnet",
         default_channel="CAN1",
-        notes="Requires the 64-bit NI-XNET driver and the nixnet optional dependency. Select an NI MAX CAN interface (CAN1, CAN2, etc.). Internal termination is off by default. USB-8473 / NI-CAN is not supported.",
+        notes="Requires the 64-bit NI-XNET driver and the nixnet optional dependency. Select an NI MAX CAN interface (CAN1, CAN2, etc.). Internal termination is off by default.",
+    ),
+    BackendSpec(
+        key="nican",
+        label="NI (USB-8473 / NI-CAN)",
+        interface="nican",
+        default_channel="CAN0",
+        notes="Classic CAN via the 32-bit NI-CAN helper. Check the interface name in NI MAX and close its test panel before connecting.",
     ),
 )
 

@@ -63,6 +63,10 @@ and hardware validation scope.
 
 See the [DBC editor guide](docs/dbc-editor.md) for the message tree, live filter and bit map, and the [Signal Graph guide](docs/signal-graph.md) for CAN plots, overlays and replay.
 
+Open **Help → About Signal Explorer** for the installed version and a scrollable
+copy of [Driver Setup.txt](src/signal_explorer/assets/Driver%20Setup.txt) with
+clickable vendor download links. Use it when adding hardware after installation.
+
 See [Users Guide.pdf](Users%20Guide.pdf) for operation, UI reference, workflows,
 troubleshooting and model-specific connector maps, and [Install Guide.pdf](Install%20Guide.pdf)
 for deployment. The user guide follows the supplied Kvaser manual's layout conventions.
@@ -95,6 +99,20 @@ physical CAN connection or bitrate scan finishes.
 | Vector | `vector` | Vector driver + XL Library; assign channels in Vector Hardware Config |
 | Intrepid ValueCAN / neoVI | `neovi` | Intrepid drivers; optional `pip install python-ics` |
 | NI USB-8502 (one or two ports) | `nixnet` | 64-bit NI-XNET driver + `.[nixnet]` Python extra |
+| NI USB-8473 / USB-8473s | `nican` | NI-CAN 18.5 and the bundled 32-bit helper |
+
+### NI USB-8473 / NI-CAN
+
+Install NI-CAN with NI MAX. Confirm the adapter and interface name in NI MAX,
+then close its test panel. In Signal Explorer, use **Detected devices** or select
+**NI (USB-8473 / NI-CAN)** and enter the NI MAX interface name, such as `CAN0`.
+Set the bus bitrate and click **Connect**. This backend supports Classic CAN.
+NI lists Windows 10 for NI-CAN 18.5. Windows 11 compatibility requires bench
+verification. [NI-CAN driver](https://www.ni.com/en/support/downloads/drivers/download.ni-can.html)
+
+When running from source, install python-can 4.6.1 in a 32-bit Windows Python
+3.12 environment. Set `SIGNAL_EXPLORER_NICAN_PYTHON` to that environment's
+`python.exe`, or leave it unset to use `py -3.12-32`.
 
 ### NI USB-8502 / NI-XNET
 
@@ -122,8 +140,7 @@ USB-powered and does not require an external supply for CAN.
 
 The same monitoring, repeat TX, DBC, Python script and MF4 logging/replay paths
 are used as for the existing adapters. Only high-speed CAN/FD NI interfaces are
-enumerated; other NI-XNET hardware requires separate qualification. This does
-not add NI-CAN/USB-8473, NI LIN or NI Ethernet support. NI native sessions and
+enumerated; other NI-XNET hardware requires separate qualification. NI native sessions and
 conversion are mock tested; physical USB-8502 operation awaits bench testing.
 See the guides for wiring, NI MAX verification, diagnostics and acceptance steps.
 

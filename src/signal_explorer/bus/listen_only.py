@@ -7,7 +7,7 @@ from signal_explorer.bus.strategies import strategy_for
 def open_bus(*, monitor_only=False, **kwargs):
     strategy = strategy_for(kwargs['interface'])
     if not monitor_only:
-        return can.Bus(**kwargs)
+        return strategy.open_active(kwargs)
     if not strategy.listen_only:
         raise ValueError('Hardware listen-only setup is not supported by this backend. No channel was opened.')
     return strategy.open_silent(kwargs)

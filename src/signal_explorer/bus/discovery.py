@@ -38,6 +38,9 @@ class ChannelOption:
 def discover_channels(interface):
     """Return selectable configurations and an actionable status message."""
     try:
+        if interface == "nican":
+            from signal_explorer.bus.nican_bridge import discover_nican_channels
+            return discover_nican_channels()
         if interface == "nixnet":
             from signal_explorer.bus.ni import discover_ni_channels
             return discover_ni_channels()

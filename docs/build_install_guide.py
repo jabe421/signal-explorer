@@ -26,9 +26,12 @@ def page(title,subtitle):
 def link(label,url):
     p(f'<link href="{url}" color="#126C79"><u>{label}</u></link>','SmallSE')
 
-page('Install guide','Signal Explorer | Windows source installation<br/>Version 0.1.0 - Multi-channel CAN and live TX lists<br/>Document revision 1.6 - November 10, 2026')
-p('This guide installs the current Python desktop application on another PC. A standalone installer will be addressed later. You need internet access for the initial Python package downloads and any required driver downloads.')
-h('1. Prepare the PC and project files')
+page('Install guide','Signal Explorer | Windows installer and source installation<br/>Document revision 1.7 - November 13, 2026')
+h('Install the Windows release')
+p('On Windows 10 1809 (build 17763) or later or Windows 11 x64, download the versioned Setup EXE from GitHub Releases, verify its SHA-256 if supplied, and run Setup. Choose the install folder and optional desktop shortcut. Python, Qt and the application libraries are bundled. Open the Start menu shortcut and connect a Virtual adapter to check the installation without hardware.')
+link('Signal Explorer releases','https://github.com/jabe421/signal-explorer/releases')
+p('Install the vendor drivers separately as needed. Reopen <b>Help &gt; About Signal Explorer</b> after installation for the same driver instructions with clickable links. The Start menu also includes <b>Signal Explorer Driver Setup</b>. For USB-8473/8473s follow the NI-CAN setup page.')
+h('1. Prepare the PC and project files for a source installation')
 p('Install <b>64-bit Python 3.12</b> and its Python launcher. This is the version used on the development PC. The project declares Python 3.11 or later, but other versions have not been validated here.')
 p('Copy or clone the project into a writable folder, for example <b>C:\\Tools\\Signal Explorer</b>. Include <b>pyproject.toml</b>, <b>README.md</b>, and the complete <b>src</b> folder. Copy <b>examples</b> for the demo DBC and <b>tests</b> if you want to run checks. Do not copy the old <b>.venv</b>; create one on the new PC. Git is optional if you copy the files.')
 p('Keep the complete src/signal_explorer/assets and scripting folders: the package includes the SE window icon, startup splash and built-in demo script. Copy examples/scripts/mcu for the companion scripting tutorials. No additional runtime package is required for File Viewer or the Python runner.','SmallSE')
@@ -44,7 +47,7 @@ p('<b>PySide6-Essentials</b> - desktop UI; <b>python-can</b> - CAN interfaces; <
 
 story.append(PageBreak())
 page('Adapter requirements','Install only the software needed for the adapters you plan to use.')
-p('Install vendor-supplied drivers/APIs matching this 64-bit installation before connecting hardware, unless the installer requests USB connection. Keep bus wiring disconnected during setup. Driver installers may need administrator approval. Vendor DLLs are not included in the source.')
+p('Install the vendor drivers/APIs before connecting hardware, unless the vendor installer requests USB connection. Keep bus wiring disconnected during setup. Use the 64-bit API for the main application or the 32-bit NI-CAN API for the USB-8473 family. Driver installation may need administrator approval.')
 h('Virtual CAN, LIN and Ethernet - no hardware')
 p('No vendor software is required for the simulators. Choose a virtual adapter in the relevant tab; demo traffic/peers let you test monitoring, sending and logging without physical bus traffic.')
 h('CANable - SLCAN firmware')
@@ -87,7 +90,7 @@ p('196 automated checks pass, including adapter preferences, DBC editing and NI-
 h('Logging and playback')
 p('Click <b>Start Logging</b> to record RX and TX; <b>Stop Logging</b> finalizes the MDF4 file and opens a save dialog. Canceling retains it for <b>Save Log...</b>. On exit, choose <b>No</b> at the save prompt to discard the pending log. Logging continues while the trace is paused or filtered. <b>Playback Log as TX</b> replays a selected recorded bus/direction at best-effort 1x timing through the connected adapter; <b>Stop Playback</b> stops it. Physical timing and third-party interoperability are not yet qualified.')
 h('Current scope')
-p('CAN supports Classic/FD. LIN offers simulated Monitor/Master/Slave and experimental native Intrepid, Vector XL and PEAK PLIN. Ethernet now offers an isolated simulator, Windows PC Ethernet through Npcap, and ValueCAN4-2EL Ethernet. Sending, repeat, filters and MF4/replay are available. Ethernet setup is on pages 5-6. SENT, CAN XL and a packaged installer remain future work.')
+p('CAN supports Classic CAN and CAN FD. LIN offers simulated Monitor/Master/Slave and experimental native Intrepid, Vector XL and PEAK PLIN. Ethernet supports simulation, Windows PC Ethernet through Npcap, and ValueCAN4-2EL. Sending, filters and MF4 recording/replay are available. Ethernet setup is on pages 5-6.')
 p('DBC files are optional; copy the files you intend to use separately. No compiler is normally needed when compatible prebuilt Python wheels are available. Record working package versions for reproducible deployments; the current project uses minimum version constraints rather than a pinned dependency lock.','SmallSE')
 
 story.append(PageBreak())
@@ -175,8 +178,22 @@ p('Connect and check a known RX ID. Send eight known bytes and confirm them inde
 p('The normal CAN trace, filters, DBC, repeat send, Python scripts, MF4 RX/TX recording and timed replay use this connection. First confirm bytes and timing at the peer. This release has mock coverage for NI enumeration, native frame conversion and MF4 recording; physical USB-8502 qualification remains pending.','SmallSE')
 h('Troubleshooting and scope')
 p('<b>Python API unavailable:</b> install .[nixnet] in this .venv. <b>Scan/DLL error:</b> install or repair 64-bit NI-XNET. <b>No channels:</b> check USB and NI MAX; Refresh. <b>Connect/rate failure:</b> check the exact CAN name, peer rates and competing sessions. <b>Bus-off:</b> stop TX, repair wiring/termination/peer ACK, then disconnect/reconnect.')
-p('USB-8473 / NI-CAN is excluded. Only high-speed/FD NI interfaces are enumerated; other NI-XNET models require separate qualification. No NI LIN, Ethernet or synchronization controls are added. See the updated User\'s Guide for the NI electrical profile, pinout revision differences and detailed bench checks.','SmallSE')
+p('NI-XNET discovery targets high-speed/FD NI interfaces. For the USB-8473 family, follow the separate NI-CAN setup on the next page. The User\'s Guide covers NI electrical profiles and model-specific connector details.','SmallSE')
 link('NI Python requirements and installation','https://nixnet.readthedocs.io/en/stable/installation.html')
+
+story.append(PageBreak())
+page('NI-CAN / USB-8473 setup','USB-8473 and USB-8473s | High-speed Classic CAN')
+h('1. Install NI-CAN and verify the device')
+p('Install <b>NI-CAN 18.5</b> with <b>NI Measurement &amp; Automation Explorer (MAX)</b>. Follow the NI USB connection and restart instructions. In NI MAX, locate the device under Devices and Interfaces, record the CAN interface name (for example CAN0), and close any open test panel before connecting from Signal Explorer.')
+link('NI-CAN driver download','https://www.ni.com/en/support/downloads/drivers/download.ni-can.html')
+link('NI-CAN 18.5 system requirements and hardware list','https://www.ni.com/pdf/manuals/374799f.htm')
+p('NI lists Windows 10 for NI-CAN 18.5. NI MAX detection has been reported on Windows 11. Signal Explorer frame I/O with this backend still needs a physical bench check on both versions. The USB-8502 uses the separate NI-XNET backend.')
+h('2. Run the installed app or set up the source helper')
+p('The standard Windows installer bundles the 32-bit helper used by the 64-bit app. For a source checkout, install Windows Python 3.12 x86 alongside the main x64 environment. Run these commands in PowerShell before launching the main app from the same session:')
+code('py -3.12-32 -m venv .venv-build-nican\n.\\.venv-build-nican\\Scripts\\python.exe -m pip install python-can==4.6.1\n$env:SIGNAL_EXPLORER_NICAN_PYTHON = (Resolve-Path `\n    .\\.venv-build-nican\\Scripts\\python.exe).Path')
+h('3. Connect and check traffic')
+p('In the CAN tab, use <b>Detected devices</b>, or select <b>NI (USB-8473 / NI-CAN)</b> and enter the NI MAX interface name. Set the Classic CAN bitrate and click Connect. On a terminated bench bus, confirm a known frame from a second node appears as RX, then send one frame and verify it at the peer.')
+p('This backend provides active Classic CAN RX/TX. CAN FD, listen-only, driver TX reports and the 8473s synchronization connector are outside the backend scope. If scanning fails, confirm NI MAX sees the device and NI-CAN is installed. For a source build, also verify the selected helper interpreter is x86.','SmallSE')
 
 story.append(PageBreak())
 page('DBC editor & adapter defaults','October 31, 2026 | Source update and offline verification')
@@ -219,7 +236,7 @@ def decorate(canvas,doc):
     canvas.line(43,h-29,w-43,h-29)
     canvas.setFont('Helvetica',8)
     canvas.setFillColor(colors.HexColor('#446170'))
-    canvas.drawString(43,25,'SIGNAL EXPLORER  /  INSTALL GUIDE  /  REV 1.6  /  NOV 10, 2026')
+    canvas.drawString(43,25,'SIGNAL EXPLORER  /  INSTALL GUIDE  /  REV 1.7  /  NOV 13, 2026')
     canvas.drawRightString(w-43,25,str(doc.page))
 
 doc=SimpleDocTemplate(str(output),pagesize=letter,rightMargin=43,leftMargin=43,topMargin=46,bottomMargin=43,title='Install guide - Signal Explorer',author='Signal Explorer')
@@ -230,4 +247,4 @@ print('Pages:',len(r.pages))
 for i,page in enumerate(r.pages,1):
     text=page.extract_text()
     print(i, len(text),text[:60].replace('\n',' '))
-assert len(r.pages)==10, 'Unexpected pagination; inspect layout'
+assert len(r.pages)==11, 'Unexpected pagination; inspect layout'

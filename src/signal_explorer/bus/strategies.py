@@ -81,6 +81,9 @@ class BackendStrategy:
             "Hardware listen-only setup is not supported by this backend. No channel was opened."
         )
 
+    def open_active(self, kwargs):
+        return can.Bus(**kwargs)
+
 
 class IntegerChannelStrategy(BackendStrategy):
     def native_channel(self, channel):
@@ -194,6 +197,22 @@ class PeakStrategy(BackendStrategy):
         return open_peak_silent(kwargs)
 
 
+class LegacyNiStrategy(BackendStrategy):
+    enumerates_channels = True
+    connection_hint = " Verify NI-CAN and the interface name in NI MAX, then close its CAN test panel."
+
+    def channel_options(self, kwargs, config):
+        return dict(kwargs, serial=config.get("serial"))
+
+    def open_active(self, kwargs):
+        from signal_explorer.bus.nican_bridge import NiCanBus
+
+        args = dict(kwargs)
+        args.pop("interface")
+        args.pop("ignore_config", None)
+        return NiCanBus(**args)
+
+
 class NiStrategy(BackendStrategy):
     enumerates_channels = True
     supports_fd = tx_reports = listen_only = advanced_timing = supports_termination = (
@@ -250,6 +269,7 @@ STRATEGIES = {
     "kvaser": KvaserStrategy(),
     "pcan": PeakStrategy(),
     "nixnet": NiStrategy(),
+    "nican": LegacyNiStrategy(),
 }
 
 

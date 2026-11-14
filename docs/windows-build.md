@@ -2,6 +2,7 @@
 
 The workflow **Build Windows installer** runs only when started manually. It
 tests and packages Windows x64 using Python 3.12, PyInstaller and Inno Setup.
+It builds and verifies a separate x86 helper for the NI-CAN USB-8473 family.
 It uploads a downloadable build artifact; it does not publish a GitHub Release,
 create a tag, or upload anything on an ordinary source push.
 
@@ -48,7 +49,7 @@ normal GitHub Actions token with read access to repository contents.
    or organization. You need repository write access to start a manual workflow.
 3. Select **Build Windows installer** in the left sidebar.
 4. Click **Run workflow**. Select branch **main**.
-5. Leave the installer version as `0.1.0-beta.2`, or enter the intended release
+5. Leave the installer version as `0.4.0-beta.2`, or enter the intended release
    version. This labels the installer; changing the package's application version
    remains a separate source edit in `pyproject.toml`.
 6. Click the green **Run workflow** button. Refresh after a few seconds, then
@@ -58,7 +59,7 @@ normal GitHub Actions token with read access to repository contents.
    simulation paths and compiles the installer. The workflow has a 45-minute
    timeout; the first build may take several minutes.
 8. A green check means those build checks passed. Scroll to **Artifacts** on the
-   run's summary page. Download **SignalExplorer-windows-x64-0.1.0-beta.2**.
+   run's summary page. Download **SignalExplorer-windows-x64-0.4.0-beta.2**.
    You must be signed into GitHub with access to the repository to download it.
 9. Extract the ZIP. It contains the setup EXE, `SHA256SUMS.txt`, `build-info.json`
    and `packaging-smoke.json`. Artifacts are retained for 30 days. Keep a local
@@ -79,6 +80,8 @@ GitHub's guide: <https://docs.github.com/en/actions/how-tos/manage-workflow-runs
 - Creates a Start menu shortcut and an optional desktop shortcut with the SE icon.
 - Includes Python, Qt, application libraries, the separate script worker, demo
   DBC/LDF/scripts, three PDF guides, dependency notices and driver instructions.
+  The installed `examples` folder includes `demo_board.dbc` and `demo_board.mf4`
+  for decoding and replaying demo board traffic.
 - Reuses the previous installation directory for upgrades with the same AppId.
   Close the running app and save pending files before upgrading. Use distinct
   beta versions for identifiable builds; do not replace an already shared
@@ -91,9 +94,12 @@ GitHub's guide: <https://docs.github.com/en/actions/how-tos/manage-workflow-runs
 
 Vendor hardware drivers and Npcap are not bundled or silently updated. Python
 bindings are included; the corresponding driver/API must be installed separately
-for physical hardware. Simulation does not need those drivers. Follow **Driver
-Setup.txt** and the Install Guide for the exact adapter. This first setup is not
-an automatic vendor-driver updater or an application auto-update service.
+for physical hardware. Simulation does not need those drivers. The same
+[Driver Setup.txt](../src/signal_explorer/assets/Driver%20Setup.txt) is shown at
+the end of Setup, installed with a Start menu shortcut, and available with
+clickable links under **Help → About Signal Explorer**. For the USB-8473/8473s,
+install NI-CAN 18.5 separately and confirm the CAN interface in NI MAX.
+The USB-8502 uses NI-XNET.
 
 The installer is unsigned until signing is configured; Windows/company policy
 may show an unknown publisher or block execution. Use a controlled tester PC and
@@ -114,6 +120,8 @@ Windows version under your organization's policy. ARM64 is not qualified.
 1. Run Setup and check its destination, Start menu and optional desktop shortcut.
 2. Start Signal Explorer from the shortcut. Verify its icon/splash and default
    Virtual selection. No adapter should connect or transmit automatically.
+   Open **Help → About Signal Explorer** and check that the version is correct
+   and the NI-CAN and NI-XNET links open their respective vendor pages.
 3. Connect Virtual CAN, enable demo traffic, load the installed demo DBC and run
    File Viewer > Open CAN Simulation Example. Try Pause/Resume/Stop.
 4. Try raw/DBC multi-message once/cyclic sending, live editing and saving/reopening
@@ -133,17 +141,27 @@ distributing the build as a release.
 
 ## Local build (optional)
 
-Use a dedicated Windows x64 Python 3.12 build environment and Inno Setup 6:
+Use Windows x64 Python 3.12 and Inno Setup 6. To include USB-8473 support,
+also install Python 3.12 x86 on the **build PC** and create the helper first:
 
 ```powershell
-python -m venv .venv-build
+py -3.12-32 -m venv .venv-build-nican
+.\.venv-build-nican\Scripts\python.exe -m pip install -c packaging/windows/constraints.txt pyinstaller pyinstaller-hooks-contrib python-can
+.\.venv-build-nican\Scripts\python.exe -m PyInstaller --onedir --name SignalExplorer-NICAN --distpath build/nican --workpath build/nican-work --specpath build/nican-work src/signal_explorer/bus/nican_worker.py
+```
+
+Then build the x64 app and pass the helper folder to the packaging script:
+
+```powershell
+py -3.12-64 -m venv .venv-build
 .\.venv-build\Scripts\python.exe -m pip install -c packaging/windows/constraints.txt -r packaging/windows/requirements-build.txt ".[intrepid,nixnet]" "gs-usb==0.3.1" "pyusb==1.3.1"
 .\.venv-build\Scripts\python.exe -m pytest tests -q
-.\packaging\windows\build.ps1 -Python .\.venv-build\Scripts\python.exe -Version 0.1.0-beta.2
+.\packaging\windows\build.ps1 -Python .\.venv-build\Scripts\python.exe -Version 0.4.0-beta.2 -NiCanHelper build/nican/SignalExplorer-NICAN
 ```
 
 `-SkipInstaller` builds and smoke-tests the application folder when Inno Setup
 is unavailable. Generated files stay under ignored `build/` and `dist/` folders.
+Omit `-NiCanHelper` only for builds that can skip USB-8473/8473s operation.
 Share the setup EXE, not one EXE extracted from the application dependency folder.
 The packaged script editor can use bundled modules and adjacent helper `.py`
 files; it does not provide pip installation of arbitrary third-party modules.
@@ -151,6 +169,6 @@ files; it does not provide pip installation of arbitrary third-party modules.
 ## Later: GitHub Releases
 
 After clean-PC/bench checks, attach the tested setup EXE and checksum to a draft
-`v0.1.0-beta.2` release, then publish as a pre-release when ready. Publishing is
+`v0.4.0-beta.2` release, then publish as a pre-release when ready. Publishing is
 deliberately separate from this manual build workflow. A later workflow can add
 tag-triggered builds, draft releases, signing and update checks.

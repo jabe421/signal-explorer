@@ -13,7 +13,7 @@ def main(report_path):
     os.environ['QT_QPA_PLATFORM'] = 'offscreen'
     from PySide6.QtCore import QSettings
     from PySide6.QtGui import QIcon, QPixmap
-    from PySide6.QtWidgets import QApplication
+    from PySide6.QtWidgets import QApplication, QTextBrowser
     from signal_explorer.bus.backends import BACKENDS
     from signal_explorer.bus.service import BusService
     from signal_explorer.bus.transmit import TxEntry, TransmitEngine
@@ -28,6 +28,8 @@ def main(report_path):
     from signal_explorer.scripting.controller import ScriptController
     from signal_explorer.scripting.transport import CanScriptTransport
     from signal_explorer.ui.main_window import MainWindow
+    from signal_explorer.ui.about_dialog import AboutDialog
+    import can
     import cantools
 
     report = dict(ok=False, frozen=bool(getattr(sys, 'frozen', False)), checks=[])
@@ -81,10 +83,22 @@ def main(report_path):
             check(window._current_backend().interface == 'virtual', 'Fresh GUI defaults to Virtual')
             window.show()
             app.processEvents()
+            about = AboutDialog(window._running_version, window)
+            driver_setup = about.findChild(QTextBrowser)
+            check(driver_setup.openExternalLinks() and
+                  'download.ni-can.html' in driver_setup.toHtml() and
+                  'download.ni-xnet.html' in driver_setup.toHtml(),
+                  'About dialog includes both NI driver links')
+            about.close()
 
             install = Path(sys.executable).parent if report['frozen'] else package.parents[1]
             database = cantools.database.load_file(str(install/'examples/demo.dbc'))
             check(database.get_message_by_frame_id(0x200).name == 'EngineData', 'DBC loader')
+            demo_board = cantools.database.load_file(str(install/'examples/demo_board.dbc'))
+            with can.MF4Reader(install/'examples/demo_board.mf4') as demo_log:
+                demo_frame = next(iter(demo_log))
+                decoded = demo_board.decode_message(demo_frame.arbitration_id, demo_frame.data)
+            check(bool(decoded), 'Demo board MF4 frame decodes with bundled DBC')
             events = []
             bus.traffic.connect(events.append)
             bus.connect_bus(next(b for b in BACKENDS if b.interface == 'virtual'),

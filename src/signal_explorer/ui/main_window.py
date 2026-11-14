@@ -1176,14 +1176,9 @@ class MainWindow(QMainWindow):
         self._diagnostics_window.activateWindow()
 
     def _show_about(self):
-        QMessageBox.about(
-            self,
-            "About Signal Explorer",
-            f"Signal Explorer\nVersion {self._running_version}\n\n"
-            "An open-source desktop tool for monitoring, transmitting, recording "
-            "and replaying CAN, CAN FD, LIN and Ethernet traffic. "
-            "Use a supported hardware adapter or try the built-in simulation.",
-        )
+        from signal_explorer.ui.about_dialog import AboutDialog
+
+        AboutDialog(self._running_version, self).exec()
 
     def _check_for_updates(self):
         if self._pending_update is not None:

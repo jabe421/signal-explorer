@@ -1,5 +1,5 @@
 #ifndef BuildVersion
-  #define BuildVersion "0.1.0-beta.2"
+  #define BuildVersion "0.4.0-beta.2"
 #endif
 #ifndef SourceRoot
   #define SourceRoot "..\.."
@@ -27,7 +27,7 @@ OutputBaseFilename=SignalExplorer-Setup-{#BuildVersion}-windows-x64
 SetupIconFile={#SourceRoot}\src\signal_explorer\assets\signal-explorer.ico
 UninstallDisplayIcon={app}\SignalExplorer.exe
 LicenseFile={#SourceRoot}\LICENSE
-InfoAfterFile={#SourceRoot}\packaging\windows\Driver Setup.txt
+InfoAfterFile={#SourceRoot}\src\signal_explorer\assets\Driver Setup.txt
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern

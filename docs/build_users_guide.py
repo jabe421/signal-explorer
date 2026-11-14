@@ -93,23 +93,23 @@ p('CAN / CAN FD, LIN and Ethernet desktop workbench','Centered')
 story.append(Spacer(1,22))
 figure('can.png','Figure 1: Signal Explorer running virtual CAN FD traffic with the demo DBC.')
 story.append(Spacer(1,16))
-p('Application version 0.1.0 - DBC editing, Signal Graph and log handling<br/>Document revision 1.8 - November 10, 2026','Centered')
+p('Windows driver setup and NI USB-8473 Classic CAN<br/>Document revision 1.9 - November 13, 2026','Centered')
 note('This guide describes the current source build. Hardware driver integration is not a physical-bus qualification. '
      'NI-XNET USB-8502, native LIN and ValueCAN Ethernet await powered bench verification. Passive PC Ethernet capture has been checked. '
-     'Ethernet TX awaits physical testing. SENT, CAN XL and signal plotting are not implemented. A Windows installer beta is available; vendor drivers remain separate.')
+     'Ethernet TX and NI-CAN USB-8473 frame I/O await physical testing. A Windows installer beta is available; vendor drivers remain separate.')
 p('Read this guide alongside Install guide.pdf. Install guide covers deployment; this manual covers operation, hardware selection, verification and recovery.','Small')
 
 # 2 ---------------------------------------------------------------------------
 page('Contents and document scope','contents')
 table(['Section','Pages','Use it for'],[
     ['<link href="#release_nov5">November 5 release changes</link>',page_range('release_nov5'),'Batched CAN display, script buffering and timing.'],
-    ['<link href="#s1">1. System prerequisites &amp; hardware profile</link>',page_range('s1','ni_profile'),'PC requirements, rates, FD, isolation and NI-XNET scope.'],
+    ['<link href="#s1">1. System prerequisites &amp; hardware profile</link>',page_range('s1','ni_profile'),'PC requirements, rates, FD and isolation.'],
     ['<link href="#s2">2. Mandatory driver/software setup</link>',page_range('s2'),'Preparation before USB or bus connection; Npcap.'],
-    ['<link href="#s3">3. Connection &amp; verification</link>',page_range('s3','can_channels'),'CAN, NI USB-8502, LIN and Ethernet checks.'],
+    ['<link href="#s3">3. Connection &amp; verification</link>',page_range('s3','nican_verify'),'CAN, NI USB-8502/8473, LIN and Ethernet checks.'],
     ['<link href="#s4">4. Graphical interface reference map</link>',page_range('s4','signal_graph'),'Columns and controls, including the DBC editor and Signal Graph.'],
     ['<link href="#s5">5. Practical workflows</link>',page_range('s5','tx_workflow'),'DBC editing/decoding, LDF, sending and MF4 replay.'],
     ['<link href="#s6">6. Troubleshooting &amp; fault codes</link>',page_range('s6','tx_clocks'),'CAN/LIN/Ethernet faults, driver errors and recovery.'],
-    ['<link href="#s7">7. Appendix: adapter pinouts</link>',page_range('s7','ethernet_pins'),'CANable, Kvaser, PEAK, Vector, Intrepid, NI and Ethernet.'],
+    ['<link href="#s7">7. Appendix: adapter pinouts</link>',page_range('s7','nican_pins'),'CANable, Kvaser, PEAK, Vector, Intrepid, NI and Ethernet.'],
     ['<link href="#cli">7. Appendix: command line and sources</link>',page_range('cli','revision'),'Launch commands, environment settings and source register.'],
 ], [2.7,.7,3.8], 'Navigation for this edition.')
 h('How to read the support statements')
@@ -206,7 +206,7 @@ p('Native LIN for Vector, Intrepid and PEAK has mock coverage; powered timing, r
   'Kvaser U100-C and PEAK hardware were not available for physical tests. Other devices accepted by a generic vendor backend require their own manual and validation.','Small')
 
 page('1.5 NI USB-8502 hardware profile','ni_profile')
-p('The NI (USB-8502 / NI-XNET) CAN backend supports the one-port and two-port USB-8502 high-speed CAN / CAN FD variants. It uses NI-XNET frame streams through python-can. NI-CAN and the older USB-8473 family are excluded.')
+p('The NI (USB-8502 / NI-XNET) CAN backend supports the one-port and two-port USB-8502 high-speed CAN / CAN FD variants. It uses NI-XNET frame streams through python-can. The USB-8473 family uses the separate Classic CAN NI-CAN backend described in section 3.8.')
 table(['Item','Profile / application behavior'],[
     ['Device and power','USB-8502: one or two 9-pin male D-Sub CAN ports. USB supplies the device; external CAN transceiver power is not needed. The optional three-pin connector on the two-port unit is for synchronization, not a LIN channel. [N1,N2]'],
     ['Selectable rates','Arbitration: 125, 250, 500 or 1000 kbit/s. FD data: 0.5, 1, 2, 4, 5 or 8 Mbit/s, subject to driver/hardware acceptance. Start at 500 kbit/s / 2 Mbit/s.'],
@@ -222,10 +222,9 @@ source('[N1] NI USB-8502 product page; [N2] Quick Start 376701A; [N3] NI USB-850
 page('2 Mandatory driver/software setup','s2')
 h('2.1 Before plugging the adapter or bus in')
 steps(['Identify the exact adapter, firmware personality (SLCAN vs candleLight), piggy type and cable. Save the matching pinout and bus parameters.',
-       'Install the manufacturer\'s signed Windows driver and matching 64-bit API runtime first, following that installer\'s prompts. If it asks for USB connection during setup, follow that instruction. Keep vehicle/bus wiring disconnected.',
-       'Create the Python environment and install Signal Explorer. For development use the editable install below. Vendor DLLs are separate and are not shipped in this repository.',
+       'Install the manufacturer\'s Windows driver and API runtime per its prompts. Keep vehicle/bus wiring disconnected. The USB-8473 family uses a 32-bit NI-CAN API.',
+       'Run Windows Setup or follow the Install Guide for a source installation. Open <b>Help &gt; About Signal Explorer</b> to find the version and driver download links after installation.',
        'After installation, connect USB and verify enumeration in Device Manager and the vendor utility. Connect the physical bus only after checking the correct cable map and supply.'])
-code('py -3.12 -m venv .venv\n.\\.venv\\Scripts\\python.exe -m pip install -e .\n.\\.venv\\Scripts\\python.exe -m pip install -e ".[intrepid]"')
 table(['Backend','Required software before connection'],[
     ['CANable SLCAN','Correct serial firmware and Windows USB serial driver if needed. The COM number is machine-specific. App serial speed is 115200; this is not the CAN bitrate.'],
     ['CANable / candleLight','Compatible gs_usb firmware plus python-can[gs-usb], USB/WinUSB/libusb setup appropriate to the board. Changing the USB driver can break SLCAN access.'],
@@ -235,7 +234,8 @@ table(['Backend','Required software before connection'],[
     ['Kvaser CAN','Kvaser Windows drivers with CANlib runtime. Both U100-C and Leaf Light R v2 use CANlib; a CANlib virtual channel is not physical hardware.'],
     ['PEAK CAN','PEAK driver and 64-bit PCAN-Basic API (PCANBasic.dll).'],
     ['PEAK LIN','PEAK LIN driver, PLIN Manager service and PLIN-API (PLinApi.dll). PCAN-Basic alone cannot supply LIN.'],
-    ['NI USB-8502 CAN/FD','64-bit NI-XNET Windows driver and NI MAX; install the [nixnet] Python extra. NI-CAN, NI-DAQmx and LabVIEW are not required. See section 3.6.'],
+    ['NI USB-8502 CAN/FD','NI-XNET Windows driver and NI MAX; source users install the [nixnet] Python extra. See section 3.6.'],
+    ['NI USB-8473/8473s','NI-CAN 18.5 with NI MAX. Windows Setup bundles the x86 helper. See section 3.8.'],
 ], [1.4,4.7], 'Optional vendor components are independent.')
 note('Signal Explorer does not update adapter firmware. Record the installed driver/firmware versions before changing them and use the vendor\'s update utility if required.')
 
@@ -245,8 +245,7 @@ h('3.1 Hardware-free application check')
 steps(['Launch the app, choose <b>Virtual (no hardware)</b>, leave Inject demo traffic checked, and Connect.',
        'Expect IDs 100 and 200 to change. Load examples/demo.dbc to decode DemoStatus and EngineData. Disconnect, enable CAN FD and reconnect to add 32-byte ID 300.',
        'Send ID 200 with DE AD BE EF and a blank interval. Expect one local TX row. This validates the UI/send path, not external electrical reception.'])
-note('python-can Virtual buses exchange within one Python process. Two separately launched Signal Explorer processes are not a virtual two-node loopback. '
-     'There is no internal-loopback or listen-only toggle in the current CAN GUI.')
+note('python-can Virtual buses exchange within one Python process. Use the built-in demo peer to simulate responses. Listen-only is available on selected hardware backends.')
 h('3.2 Verify hardware in the vendor console')
 table(['Adapter','Independent check before using Signal Explorer'],[
     ['Vector','Open Vector Hardware Config / Vector Hardware Manager. Confirm serial, bus transceiver and active channel. Use the vendor loop test if installed, following its required two-channel cable/termination setup.'],
@@ -327,6 +326,16 @@ p('Missing saved ports are excluded while their preference is retained. If every
 h('Device inventory boundaries')
 p('FIRE 3 is a CAN inventory/routing profile: 16 CAN networks plus 8 LIN inventory entries. No FIRE 3 LIN transport or electrical/pinout qualification is added. Use its exact vendor manual/harness; ValueCAN pinouts do not apply.','Small')
 p('Vector inventory uses active CAN capabilities, physical port numbers and transceiver names. LIN-only piggies and I/O are excluded; Vector virtual ports are grouped separately. FIRE 3 CAN1-CAN16 use their true network IDs, including values above 255. Its LIN1-LIN8 inventory does not enable LIN sessions here. Unknown Intrepid models retain conservative/manual selection.','Small')
+
+page('3.8 NI-CAN connection & verification','nican_verify')
+p('The one-port <b>NI USB-8473</b> and <b>USB-8473s</b> use high-speed Classic CAN. The standard Windows installer bundles the 32-bit helper. Install NI-CAN 18.5 and NI MAX separately. The Install Guide covers the additional x86 Python setup when running from source.')
+steps(['Connect the USB interface as directed by NI. In NI MAX, locate the device under Devices and Interfaces and note the CAN interface name, such as CAN0. Close its test panel before using the port in Signal Explorer.',
+       'Use <b>Detected devices</b> in the CAN tab, or select <b>NI (USB-8473 / NI-CAN)</b> and enter the same interface name manually. Select the bench bus bitrate and click Connect.',
+       'On a correctly wired and terminated bench bus, send a known frame from a second CAN node and compare its ID and bytes with the RX trace. Send a standard eight-byte frame in Signal Explorer and confirm reception at the other node. Disconnect and check that the port can be reopened.'])
+h('Capabilities and troubleshooting')
+p('This backend provides active Classic CAN receive/transmit. CAN FD, Listen-only, driver TX reports and USB-8473s synchronization are outside its scope. A local TX row records adapter acceptance. Use the peer to verify on-wire reception.')
+p('If discovery fails, check USB, NI MAX enumeration and NI-CAN installation. Refresh the device list and check the interface name. If there are no frames, verify bus activity, bitrate, wiring and termination. NI lists Windows 10 for NI-CAN 18.5. NI MAX detected the device on Windows 11 in a user check. Signal Explorer RX/TX still needs bench verification.')
+p('<link href="https://www.ni.com/en/support/downloads/drivers/download.ni-can.html" color="#124b6a"><u>NI-CAN driver download</u></link> &nbsp; <link href="https://www.ni.com/pdf/manuals/374799f.htm" color="#124b6a"><u>NI-CAN 18.5 requirements</u></link>','Small')
 
 page('4 Graphical interface reference map','s4')
 figure('can.png','Figure 2: CAN/CAN FD view. Demo traffic and decoded values are synthetic.')
@@ -861,6 +870,14 @@ p('Use the approved Intrepid Ethernet breakout for the actual DB26/OBD/MULTI cab
 p('The ValueCAN4-2EL PHY is conventional 10/100 Ethernet. Automotive 100BASE-T1 requires an appropriate converter, such as the vendor\'s RAD-Moon accessory; '
   'a passive RJ45-to-single-pair cable is not a PHY converter. No native 100BASE-T1 PC adapter backend is supplied. [H2]')
 
+page('7.8a NI USB-8473 connector reference','nican_pins')
+p('The high-speed CAN port uses a 9-pin male D-Sub. Match the molded pin numbers on the adapter and use twisted pair for CAN_H and CAN_L.')
+table(['Pin','Signal used for bench CAN'],[
+    ['2','CAN_L'], ['3','V- / CAN reference ground'], ['7','CAN_H'],
+], [1,4], 'Core CAN wiring. Use the NI diagram for the other contacts.')
+p('For the remaining contacts, use the vendor pinout for your exact hardware revision. Terminate both physical ends of the bus with 120 ohms per end. The USB-8473s synchronization connector is separate from the CAN connector.')
+p('<link href="https://knowledge.ni.com/KnowledgeArticleDetails?id=kA00Z0000019YIGSA2&amp;l=en-US" color="#124b6a"><u>NI high-speed CAN pinout and wiring</u></link>','Small')
+
 page('7.9 Command line and configuration','cli')
 h('Launch commands')
 code('cd "C:\\Tools\\Signal Explorer"\n.\\.venv\\Scripts\\python.exe -m signal_explorer')
@@ -919,6 +936,7 @@ p('Vector\'s official CDN rejected the local download during preparation. Vector
   'for current revision details, use the official manual/Hardware Manager before wiring. Conditional piggy tables are examples and do not identify the user\'s two uninspected LIN piggies.','Small')
 page('7.11 Revision history and validation','revision')
 table(['Revision / date','Change'],[
+    ['1.9 / November 13, 2026','NI-CAN USB-8473/8473s setup, bench checks and wiring. Driver instructions with vendor links in the About dialog.'],
     ['1.8 / November 10, 2026','Message Tree and live filtering, resizable DBC preview, remembered layout, bit and endpoint labels, CAN signal overlays and unsaved recording prompt.'],
     ['1.7 / November 5, 2026','Opt-in driver TX reports, CAN timestamp provenance, monotonic host estimates and bounded recorder reordering with correction diagnostics.'],
     ['1.6 / November 5, 2026','Busy-bus CAN batching and cached DBC/tree lookup; retained script history, drop counters, flush/capture filters, local TX timestamps and notification-driven waits.'],
@@ -954,7 +972,7 @@ def decorate(canvas,doc):
         canvas.line(52,H-41,W-52,H-41)
     canvas.line(52,40,W-52,40)
     canvas.setFont('Helvetica',8)
-    canvas.drawString(52,26,'SIGNAL EXPLORER  |  Revision 1.8  |  November 10, 2026')
+    canvas.drawString(52,26,'SIGNAL EXPLORER  |  Revision 1.9  |  November 13, 2026')
     canvas.drawRightString(W-52,26,str(doc.page))
     canvas.restoreState()
 

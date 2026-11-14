@@ -30,7 +30,7 @@ a = Analysis([str(root/'packaging/windows/launcher.py')], pathex=[str(root/'src'
              hookspath=[], runtime_hooks=[], noarchive=False)
 # Never collect a developer PC's separately installed proprietary driver/API.
 # Optional Python bindings are packaged; vendor driver installers remain separate.
-vendor_dlls = {'vxlapi64.dll', 'vxlapi.dll', 'canlib32.dll', 'pcanbasic.dll',
+vendor_dlls = {'vxlapi64.dll', 'vxlapi.dll', 'canlib32.dll', 'pcanbasic.dll', 'nican.dll',
                'plinapi.dll', 'icsneo40.dll', 'nixnet.dll', 'wpcap.dll', 'packet.dll'}
 a.binaries = [item for item in a.binaries if Path(item[0]).name.lower() not in vendor_dlls]
 # Qt uses Windows' unversioned ICU API. A developer's PATH can expose an

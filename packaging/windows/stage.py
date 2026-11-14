@@ -21,7 +21,7 @@ def main():
         raise FileNotFoundError('Build the application before staging release files.')
     for name in ('Install Guide.pdf', 'Users Guide.pdf', "Scripting User's Guide.pdf", 'README.md', 'LICENSE'):
         shutil.copy2(ROOT/name, bundle/name)
-    shutil.copy2(ROOT/'packaging/windows/Driver Setup.txt', bundle/'Driver Setup.txt')
+    shutil.copy2(ROOT/'src/signal_explorer/assets/Driver Setup.txt', bundle/'Driver Setup.txt')
     shutil.copytree(ROOT/'examples', bundle/'examples', dirs_exist_ok=True,
                     ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
     notices = bundle/'THIRD_PARTY_LICENSES'

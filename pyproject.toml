@@ -32,5 +32,5 @@ signal-explorer = "signal_explorer.app:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-"signal_explorer" = ["assets/*.ico", "assets/*.png"]
+"signal_explorer" = ["assets/*.ico", "assets/*.png", "assets/Driver Setup.txt"]
 "signal_explorer.lin" = ["*.ldf"]
