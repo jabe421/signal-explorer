@@ -1,5 +1,5 @@
 #ifndef BuildVersion
-  #define BuildVersion "0.4.0-beta.2"
+  #define BuildVersion "0.4.0-beta.3"
 #endif
 #ifndef SourceRoot
   #define SourceRoot "..\.."
