@@ -30,6 +30,7 @@ class Update:
 class UpdateCheck:
     latest_version: str | None
     update: Update | None
+    latest_notes: str = ""
 
 
 class ReleaseAssetRedirect(HTTPRedirectHandler):
@@ -58,6 +59,7 @@ def find_update(installed, include_beta):
     best_key = current
     latest_version = None
     latest_key = None
+    latest_notes = ""
     request = Request(f"{RELEASES_URL}?per_page=100", headers={
         "Accept": "application/vnd.github+json",
         "User-Agent": "SignalExplorer-UpdateCheck",
@@ -77,9 +79,11 @@ def find_update(installed, include_beta):
         if not include_beta and (release.get("prerelease") or not key[1]):
             continue
         version = tag.removeprefix("v")
+        notes = (release.get("body") or "").strip()
         if latest_key is None or key > latest_key:
             latest_version = version
             latest_key = key
+            latest_notes = notes if current is not None and key > current else ""
         if best_key is None or key <= best_key:
             continue
         name = f"SignalExplorer-Setup-{version}-windows-x64.exe"
@@ -90,10 +94,10 @@ def find_update(installed, include_beta):
             if (asset.get("name") == name and asset.get("browser_download_url") == url
                     and re.fullmatch(r"sha256:[a-f0-9]{64}", digest)
                     and 0 < size <= MAX_INSTALLER_BYTES):
-                best = Update(version, release.get("body") or "", name, url, digest[7:], size)
+                best = Update(version, notes, name, url, digest[7:], size)
                 best_key = key
                 break
-    return UpdateCheck(latest_version, best)
+    return UpdateCheck(latest_version, best, latest_notes)
 
 
 def download_update(update):

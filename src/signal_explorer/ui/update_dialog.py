@@ -35,11 +35,13 @@ class UpdateDialog(QDialog):
         self._latest = QLabel("Newest available version: Checking…")
         self._latest.setTextFormat(Qt.TextFormat.PlainText)
         self._notes = QPlainTextEdit(readOnly=True)
+        self._notes.setAccessibleName("Release notes")
+        self._notes.setPlaceholderText("Release notes for a newer version will appear here.")
         self._check = QPushButton("Check Again")
         self._check.clicked.connect(self.check)
-        self._download = QPushButton("Download and Install")
+        self._download = QPushButton("Update")
+        self._download.setEnabled(False)
         self._download.clicked.connect(self._download_selected)
-        self._download.setVisible(install is not None)
         self._later = QPushButton("Later")
         self._later.clicked.connect(self.reject)
         buttons = QHBoxLayout()
@@ -76,6 +78,8 @@ class UpdateDialog(QDialog):
 
     def _download_selected(self):
         update = self._update
+        if self.busy or self._install is None or update is None:
+            return
         self._start(f"Downloading and verifying version {update.version}…",
                     lambda: download_update(update), installing=True)
 
@@ -114,11 +118,16 @@ class UpdateDialog(QDialog):
             latest = result.latest_version or "No published release found"
             self._latest.setText(f"Newest available version: {latest}")
             self._update = result.update
+            notes = []
+            if result.latest_notes:
+                notes.append(f"Release notes for {latest}\n\n{result.latest_notes}")
+            if self._update and self._update.version != latest and self._update.notes:
+                notes.append(f"Release notes for {self._update.version}\n\n{self._update.notes}")
+            self._notes.setPlainText("\n\n".join(notes))
             if self._install is None:
-                self._status.setText("Installation is available from the installed Windows app.")
+                self._status.setText("To install an update from this dialog, open it in the installed Windows app.")
             elif self._update is None:
                 self._status.setText("No newer Windows installer found for the selected releases.")
             else:
                 self._status.setText(f"Windows installer {self._update.version} is available.")
-                self._notes.setPlainText(self._update.notes)
         self._download.setEnabled(self._install is not None and self._update is not None)

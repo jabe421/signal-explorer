@@ -4,7 +4,7 @@ import json
 from types import SimpleNamespace
 
 import pytest
-from PySide6.QtWidgets import QApplication, QLabel
+from PySide6.QtWidgets import QApplication, QLabel, QPushButton
 
 from signal_explorer import updates
 from signal_explorer import DEVELOPMENT_VERSION
@@ -38,6 +38,7 @@ def test_selects_newer_published_installers_for_selected_channel(monkeypatch):
     monkeypatch.setattr(updates, "urlopen", lambda *a, **kw: io.BytesIO(json.dumps(releases).encode()))
     stable = updates.find_update("0.3.0-beta.2", False)
     assert stable.latest_version == "0.3.2"
+    assert stable.latest_notes == "Release notes"
     assert stable.update is None
     assert updates.find_update("0.3.0-beta.2", True).update.version == "0.3.0-beta.10"
     releases.append(release("0.3.0"))
@@ -61,14 +62,65 @@ def test_development_help_menu_shows_versions_without_install(monkeypatch):
         next(action for action in help_menu.actions()
              if action.text() == "Check for Updates...").trigger()
         dialog = window._update_dialog
-        dialog._results.put((False, updates.UpdateCheck("0.3.0-beta.2", None), None))
+        dialog._results.put((False, updates.UpdateCheck("0.5.0", None, "New release notes"), None))
         dialog._receive_result()
         labels = [label.text() for label in dialog.findChildren(QLabel)]
         assert f"Current version: {DEVELOPMENT_VERSION} (development build)" in labels
-        assert "Newest available version: 0.3.0-beta.2" in labels
-        assert dialog._download.isHidden()
+        assert "Newest available version: 0.5.0" in labels
+        assert "New release notes" in dialog._notes.toPlainText()
+        assert dialog._download.isVisible()
+        assert not dialog._download.isEnabled()
+        assert "installed Windows app" in dialog._status.text()
     finally:
         window.close()
+        app.processEvents()
+
+
+def test_update_button_downloads_and_hands_off_verified_installer(monkeypatch, tmp_path):
+    from signal_explorer.ui.update_dialog import UpdateDialog
+
+    app = QApplication.instance() or QApplication([])
+    installer = tmp_path / "Setup.exe"
+    candidate = updates.Update("0.5.0", "Installer release notes", "Setup.exe", "", "", 120)
+    handoff = []
+    attempts = []
+
+    def download(update):
+        attempts.append(update)
+        return installer
+
+    class ImmediateThread:
+        def __init__(self, *, target, **kwargs):
+            self.target = target
+
+        def start(self):
+            self.target()
+
+    monkeypatch.setattr("signal_explorer.ui.update_dialog.download_update", download)
+    monkeypatch.setattr("signal_explorer.ui.update_dialog.Thread", ImmediateThread)
+    dialog = UpdateDialog("0.4.0", handoff.append, None)
+    try:
+        buttons = dialog.layout().itemAt(dialog.layout().count() - 1).layout()
+        assert [buttons.itemAt(i).widget().text() for i in range(buttons.count())] == [
+            "Check Again", "Update", "Later",
+        ]
+        update_button = next(button for button in dialog.findChildren(QPushButton)
+                             if button.text() == "Update")
+        assert not update_button.isEnabled()
+        dialog._results.put((False, updates.UpdateCheck("0.6.0", None, "Notes only"), None))
+        dialog._receive_result()
+        assert not update_button.isEnabled()
+        assert "Notes only" in dialog._notes.toPlainText()
+        dialog._results.put((False, updates.UpdateCheck("0.6.0", candidate, "Notes only"), None))
+        dialog._receive_result()
+        assert "Release notes for 0.5.0" in dialog._notes.toPlainText()
+        update_button.click()
+        assert attempts == [candidate]
+        assert handoff == []
+        dialog._receive_result()
+        assert handoff == [installer]
+    finally:
+        dialog.close()
         app.processEvents()
 
 

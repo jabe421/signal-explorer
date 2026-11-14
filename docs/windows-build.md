@@ -10,10 +10,14 @@ create a tag, or upload anything on an ordinary source push.
 
 Starting with `0.3.0-beta.2`, open **Help → Check for Updates** in the installed
 Windows app. Select **Include beta releases** to receive prerelease offers.
-**Download and Install** verifies the installer against GitHub's published
-SHA-256 digest, then uses the normal app close flow before opening Windows Setup.
+The dialog shows the newer release's published notes when available.
+**Update** downloads the Windows installer, verifies its published SHA-256
+digest, then uses the normal app close flow before opening Windows Setup.
+The source checkout shows release notes and keeps **Update** disabled.
 Choose **Later** to keep working, or cancel a save prompt to stop the update.
 Windows asks for administrator approval to run Setup.
+On the final page, **Start Signal Explorer** is checked by default. Leave it
+checked to open the updated app when you click **Finish**.
 
 For each release, use the same version in the workflow input and GitHub release
 tag, such as `0.3.0-beta.2` and `v0.3.0-beta.2`. Attach

@@ -52,7 +52,7 @@ Name: "{group}\Signal Explorer User Guide"; Filename: "{app}\Users Guide.pdf"
 Name: "{group}\Signal Explorer Driver Setup"; Filename: "{app}\Driver Setup.txt"
 
 [Run]
-Filename: "{app}\SignalExplorer.exe"; Description: "Launch Signal Explorer"; Flags: nowait postinstall skipifsilent runasoriginaluser
+Filename: "{app}\SignalExplorer.exe"; Description: "Start Signal Explorer"; Flags: nowait postinstall skipifsilent runasoriginaluser
 
 ; No wildcard uninstall deletes: user-created files/settings and shared drivers
 ; remain intact. Inno removes only files managed by this installer.
