@@ -1,0 +1,68 @@
+SIGNAL EXPLORER - WINDOWS DRIVER SETUP
+
+Requires Windows 10 version 1809 (build 17763) or later, x64. Windows 11 x64
+is also eligible. Each hardware driver has its own Windows requirements.
+
+Python, Qt and application Python libraries are included. Do not install Python
+or run pip on the tester's PC. Simulation works without adapter drivers.
+
+Hardware drivers remain separate. This installer does not install, update or
+uninstall vendor drivers, Npcap, or the user's existing Python installation.
+Install only the vendor software required for your hardware, following the
+vendor's connection/restart instructions. After installation, reopen Signal
+Explorer and refresh the device list in the relevant protocol tab. Select the
+device or enter its channel manually, then click Connect.
+
+Vector CAN / LIN: Vector hardware drivers and XL Driver Library.
+https://www.vector.com/en/business-unit/testing-validation-diagnostics/products/network-interfaces/xl-driver-library/
+
+Intrepid ValueCAN / neoVI: Intrepid hardware drivers and native API.
+https://intrepidcs.com/support/
+
+Kvaser CAN: Kvaser CANlib drivers.
+https://kvaser.com/download/
+
+PEAK CAN: PEAK hardware driver and PCAN-Basic.
+https://www.peak-system.com/products/software/development-packages/pcan-basic/
+
+PEAK LIN: PEAK LIN driver, PLIN Manager and PLIN-API.
+https://www.peak-system.com/products/software/development-packages/plin-api/
+
+NI USB-8502: NI-XNET with NI MAX. Supports Classic CAN and CAN FD.
+https://www.ni.com/en/support/downloads/drivers/download.ni-xnet.html
+
+NI USB-8473 / USB-8473s: NI-CAN 18.5 with NI MAX. Classic CAN RX/TX only.
+The standard installer includes a 32-bit helper for the NI-CAN API. In NI MAX,
+confirm the interface name (for example CAN0) and close any active test panel.
+Use NI (USB-8473 / NI-CAN) in Signal Explorer. NI-CAN 18.5 lists Windows 10.
+Windows 11 frame I/O with this backend still needs bench verification.
+https://www.ni.com/en/support/downloads/drivers/download.ni-can.html
+https://www.ni.com/pdf/manuals/374799f.htm
+
+CANable SLCAN: USB serial device/COM port. candleLight/gs_usb: suitable WinUSB
+and libusb support for the exact firmware. Changing USB drivers can affect
+other applications; use the board vendor's instructions.
+https://www.canable.io/getting-started.html
+
+Native PC Ethernet capture: Npcap, installed separately under its own license.
+Npcap redistribution/silent installation requires the appropriate OEM license.
+https://npcap.com/
+
+Read the included Install Guide and Users Guide for adapter-specific setup,
+power, pinouts, timing and hardware validation limits. CAN FD requires compatible
+hardware and network timing. LIN and ValueCAN Ethernet also need bench power.
+
+The installer is unsigned and intended for controlled beta testing. Confirm
+its origin and SHA256 checksum before use. Company policy may require IT approval.
+Hardware behavior is not qualified by passing simulation checks.
+
+To revisit these instructions after installing, open Help > About Signal
+Explorer in the app or Signal Explorer Driver Setup in the Start menu.
+
+Examples and manuals are installed beside the app. Save edited scripts,
+databases, TX lists and recordings under Documents\Signal Explorer or another
+writable folder. Uninstall preserves user data, settings and shared drivers.
+
+Script tests use the bundled Python environment and its included modules.
+Arbitrary third-party pip packages are not dynamically installed by the editor;
+request additional packages in a future tested application build.

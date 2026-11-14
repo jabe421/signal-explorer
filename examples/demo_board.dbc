@@ -1,0 +1,44 @@
+VERSION "Inferred from SignalExplorer-20261030-232152.mf4"
+
+NS_ :
+    CM_
+    BA_DEF_
+    BA_
+    VAL_
+
+BS_:
+
+BU_: DemoBoard SignalExplorer
+
+BO_ 272 DemoBoard_Potentiometer: 2 DemoBoard
+ SG_ Potentiometer : 7|12@0+ (0.001221001221001221,0) [0|5] "V" SignalExplorer
+
+BO_ 577 DemoBoard_Button1: 1 DemoBoard
+ SG_ Button1 : 7|1@1+ (1,0) [0|1] "" SignalExplorer
+
+BO_ 608 DemoBoard_Button2: 1 DemoBoard
+ SG_ Button2 : 7|1@1+ (1,0) [0|1] "" SignalExplorer
+
+BO_ 1024 DemoBoard_Waveforms: 3 DemoBoard
+ SG_ SquareWave : 0|8@1+ (1,0) [0|255] "" SignalExplorer
+ SG_ Sawtooth : 8|8@1+ (1,0) [0|255] "" SignalExplorer
+ SG_ SineWave : 16|8@1- (1,0) [-128|127] "" SignalExplorer
+
+CM_ "Inferred from a 39.142-second CAN capture. Button identities follow the supplied action order. Unidentified traffic is omitted. User specifies a 0..5 V potentiometer signal. Scaling assumes 4095 counts equals 5 V; exact ADC resolution and calibration are not independently verified.";
+CM_ BO_ 272 "Standard CAN ID 0x110; nominal 10 ms period.";
+CM_ SG_ 272 Potentiometer "Unsigned big-endian upper 12 bits of the two-byte payload: (byte0 << 4) | (byte1 >> 4). Low nibble of byte1 was always zero. Voltage = raw * 5 / 4095, assuming 12-bit full-scale conversion. Observed raw range 182..4095 decodes to approximately 0.2222..5 V. Captured minimum is not offset-corrected to zero.";
+CM_ SG_ 577 Button1 "Byte 0 bit 7, active high. Press intervals approximately 4.480..5.620 s and 6.430..7.230 s relative to first captured frame.";
+CM_ SG_ 608 Button2 "Byte 0 bit 7, active high. Press intervals approximately 9.841..10.851 s and 11.911..13.011 s relative to first captured frame.";
+CM_ BO_ 1024 "Standard CAN ID 0x400; nominal 50 ms period. All three bytes repeat exactly every 64 frames (3.2 s) in this capture. Demo waveform identities supplied by user; controllability is not verified.";
+CM_ SG_ 1024 SquareWave "Byte 0 preserved as unsigned raw data. Observed 0x00 and 0xFF plateaus plus one 0x80 sample per 64-frame cycle. Physical units and intended signedness are unverified.";
+CM_ SG_ 1024 Sawtooth "Byte 1, unsigned. Increments by 4 modulo 256 each frame; observed range 0..252.";
+CM_ SG_ 1024 SineWave "Byte 2 interpreted as signed two's-complement. Observed smooth sine-like waveform spanning -127..127. Physical units unspecified.";
+
+BA_DEF_ BO_ "GenMsgCycleTime" INT 0 65535;
+BA_ "GenMsgCycleTime" BO_ 272 10;
+BA_ "GenMsgCycleTime" BO_ 577 10;
+BA_ "GenMsgCycleTime" BO_ 608 10;
+BA_ "GenMsgCycleTime" BO_ 1024 50;
+
+VAL_ 577 Button1 0 "Released" 1 "Pressed";
+VAL_ 608 Button2 0 "Released" 1 "Pressed";
