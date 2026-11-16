@@ -80,6 +80,7 @@ class BusService(QObject):
     traffic = Signal(object)  # Thread-safe capture before display queuing/filtering.
     about_to_disconnect = Signal()
     connection_state_changed = Signal(str)
+    tx_channel_changed = Signal()
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -337,6 +338,7 @@ class BusService(QObject):
         if selected is None:
             raise ValueError('TX channel is not enabled.')
         self.tx_channel = selected['native_channel']
+        self.tx_channel_changed.emit()
 
     @property
     def ui_dropped(self):
@@ -344,6 +346,9 @@ class BusService(QObject):
 
     def advance_display_epoch(self):
         self._display.advance_epoch()
+
+    def flush_display(self):
+        self._flush_display(self._display.capacity)
 
     def _flush_display(self, limit=2000):
         epoch, pending = self._display.drain(limit)

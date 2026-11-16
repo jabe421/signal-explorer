@@ -28,7 +28,7 @@ class LogWindow(ScriptWindow):
         bar = QToolBar('Replay selection', self); self.addToolBarBreak(); self.addToolBar(bar)
         bar.addWidget(QLabel('Recorded bus: '))
         self.source_bus = QSpinBox(); self.source_bus.setRange(0, 255); self.source_bus.setValue(1)
-        self.source_bus.setToolTip('Recorded BusChannel mapped to the currently connected adapter/channel.')
+        self.source_bus.setToolTip('Select the source bus in the recording. CAN replay sends to the main CAN tab’s TX channel.')
         bar.addWidget(self.source_bus)
         self.direction = QComboBox()
         for label, key in (('RX and TX', 'all'), ('RX only', 'rx'), ('TX only', 'tx')):
@@ -80,7 +80,7 @@ class LogWindow(ScriptWindow):
         buses = result['buses']
         if buses:
             self.source_bus.setValue(buses[0])
-            self.source_bus.setToolTip(f'Recorded bus channels: {", ".join(map(str,buses))}. Sends to the current connected channel.')
+            self.source_bus.setToolTip(f'Recorded bus channels: {", ".join(map(str,buses))}.')
         self._refresh()
 
     def _run(self):
@@ -110,8 +110,14 @@ class LogWindow(ScriptWindow):
                 widget.setEnabled(not active)
         service = controller.transport.panel.service
         info = service.session_info
+        destination = info.get('native_channel', '')
+        if controller.transport.protocol == 'CAN' and service.is_connected:
+            playback = controller.transport.panel.playback
+            selected = playback.tx_options['destination_channel'] if playback else service.tx_channel
+            destination = next((channel['label'] for channel in service.channels
+                                if channel['native_channel'] == selected), selected)
         self.session.setText(f'{controller.transport.protocol} replay destination: '
-                             + (f"{info.get('adapter','')} | {info.get('native_channel','')}"
+                             + (f"{info.get('adapter','')} | {destination}"
                                 + (f" | {info['role']}" if 'role' in info else '')
                                 if service.is_connected else 'Disconnected — connect in the corresponding protocol tab.'))
         self.statusBar().showMessage(controller.state.capitalize()+' | Logfile is read-only')

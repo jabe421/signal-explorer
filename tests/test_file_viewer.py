@@ -130,6 +130,36 @@ class FileViewerTests(unittest.TestCase):
         wait_for(lambda:False,.4)
         self.assertEqual(len(self.sent),2)
 
+    def test_replay_same_id_selects_source_bus_and_pins_destination(self):
+        self.connect()
+        service = self.window._service
+        service.channels = [
+            {"native_channel": 1, "label": "CAN1"},
+            {"native_channel": 2, "label": "CAN2"},
+        ]
+        service.select_tx_channel(1)
+        path = Path(self.temp.name) / "two-buses.mf4"
+        now = time.time()
+        with can.MF4Writer(path) as writer:
+            for bus, data, offset in ((1, b'A', 0), (2, b'B', .01), (2, b'C', .5)):
+                writer.on_message_received(can.Message(
+                    timestamp=now + offset, channel=bus, arbitration_id=0x120,
+                    is_extended_id=False, data=data,
+                ))
+        viewer = self.open(path)
+        self.assertIn("CAN1", viewer.session.text())
+        service.select_tx_channel(2)
+        self.assertIn("CAN2", viewer.session.text())
+        viewer.source_bus.setValue(2)
+        with patch.object(service, "send_message", side_effect=lambda msg, **_: self.sent.append(msg) or True):
+            viewer._run()
+            self.assertTrue(wait_for(lambda: len(self.sent) == 1))
+            service.select_tx_channel(1)
+            self.assertIn("CAN2", viewer.session.text())
+            self.assertTrue(wait_for(lambda: not viewer.controller.active))
+        self.assertEqual([(msg.channel, bytes(msg.data)) for msg in self.sent], [(2, b'B'), (2, b'C')])
+        self.assertIn("CAN1", viewer.session.text())
+
     def test_shared_playback_ownership_and_disconnect(self):
         self.connect()
         path=self.logfile((0,30))

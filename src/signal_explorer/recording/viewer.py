@@ -80,6 +80,8 @@ class ReplayTransport(QObject):
             panel.service.connected.connect(self.connection_changed)
             panel.service.disconnected.connect(self.connection_changed)
             panel.playback_changed.connect(self.connection_changed)
+        if 'CAN' in panels:
+            panels['CAN'].service.tx_channel_changed.connect(self.connection_changed)
 
     @property
     def panel(self):

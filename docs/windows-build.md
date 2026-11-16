@@ -16,7 +16,7 @@ digest, then uses the normal app close flow before opening Windows Setup.
 The dialog shows download percentage and stays open with a closing status until
 Signal Explorer is ready to launch Setup.
 The source checkout shows release notes and keeps **Update** disabled.
-Choose **Later** to keep working, or cancel a save prompt to stop the update.
+Choose **Exit** to close the updater and keep working, or cancel a save prompt to stop the update.
 Windows asks for administrator approval to run Setup.
 On the final page, **Start Signal Explorer** is checked by default. Leave it
 checked to open the updated app when you click **Finish**.

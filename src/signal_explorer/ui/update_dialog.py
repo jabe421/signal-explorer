@@ -49,10 +49,10 @@ class UpdateDialog(QDialog):
         self._download = QPushButton("Update")
         self._download.setEnabled(False)
         self._download.clicked.connect(self._download_selected)
-        self._later = QPushButton("Later")
-        self._later.clicked.connect(self.reject)
+        self._exit = QPushButton("Exit")
+        self._exit.clicked.connect(self.reject)
         buttons = QHBoxLayout()
-        for button in (self._check, self._download, self._later):
+        for button in (self._check, self._download, self._exit):
             buttons.addWidget(button)
         layout = QVBoxLayout(self)
         current = version or "Unavailable"
@@ -109,13 +109,13 @@ class UpdateDialog(QDialog):
             self.accept()
 
     def _set_idle_controls(self):
-        for control in (self._beta, self._check, self._later):
+        for control in (self._beta, self._check, self._exit):
             control.setEnabled(True)
         self._download.setEnabled(self._install is not None and self._update is not None)
 
     def _start(self, message, operation, installing=False):
         self._status.setText(message)
-        for control in (self._beta, self._check, self._download, self._later):
+        for control in (self._beta, self._check, self._download, self._exit):
             control.setEnabled(False)
 
         def run():

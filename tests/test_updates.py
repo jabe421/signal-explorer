@@ -105,7 +105,7 @@ def test_update_button_downloads_and_hands_off_verified_installer(monkeypatch, t
     try:
         buttons = dialog.layout().itemAt(dialog.layout().count() - 1).layout()
         assert [buttons.itemAt(i).widget().text() for i in range(buttons.count())] == [
-            "Check Again", "Update", "Later",
+            "Check Again", "Update", "Exit",
         ]
         update_button = next(button for button in dialog.findChildren(QPushButton)
                              if button.text() == "Update")

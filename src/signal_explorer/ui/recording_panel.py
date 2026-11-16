@@ -186,12 +186,20 @@ class RecordingPanel(QWidget):
             raise RuntimeError("Playback is already running for this protocol. Stop it first.")
         if not self.service.is_connected or not getattr(self.service, "can_replay", True):
             raise RuntimeError("Connect a replay-capable session before starting playback.")
+        destination = self.service.tx_channel if self.recorder.codec.protocol == "CAN" else None
+
+        def send(msg):
+            if destination is not None:
+                msg.channel = destination
+            return self.service.send_message(msg, report_errors=False)
+
         self.playback = MF4Playback(
-            path, lambda msg: self.service.send_message(msg, report_errors=False), self.service.fd_enabled,
+            path, send, self.service.fd_enabled,
             self.source_bus.value() if bus_channel is None else bus_channel,
             self.direction.currentData() if direction is None else direction, self,
             codec=self.playback_codec_factory() if self.playback_codec_factory else None,
-            tx_options=self.tx_options() if self.tx_options else None,
+            tx_options={**(self.tx_options() if self.tx_options else {}),
+                        "destination_channel": destination},
             timing_mode=self.replay_timing_mode)
         self.playback.progress.connect(self.playback_status.setText)
         self.playback.failed.connect(self._playback_failed)

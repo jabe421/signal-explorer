@@ -61,6 +61,7 @@ from signal_explorer.ui.timing_window import TimingWindow
 from signal_explorer.ui.bus_health_window import BusHealthWindow
 from signal_explorer.ui.transmit_window import TransmitWindow
 from signal_explorer.ui.signal_graph import SignalGraph
+from signal_explorer.ui.signal_tester import SignalTester
 import can
 import cantools
 
@@ -686,6 +687,14 @@ class MainWindow(QMainWindow):
             Qt.DockWidgetArea.RightDockWidgetArea,
         )
         self.tabifyDockWidget(self._bus_health_dock, self._signal_graph_dock)
+        self._signal_tester = SignalTester(
+            self, flush_frames=self._service.flush_display, dropped_frames=lambda: self._service.ui_dropped,
+        )
+        self._signal_tester_dock = self._add_can_dock(
+            "Signal Tester", "canSignalTesterDock", self._signal_tester,
+            Qt.DockWidgetArea.RightDockWidgetArea,
+        )
+        self.tabifyDockWidget(self._signal_graph_dock, self._signal_tester_dock)
 
         def update_sender_title(title):
             self._transmit_dock.setWindowTitle(title.replace("Send Messages", "Multi Message Sender", 1))
@@ -719,7 +728,8 @@ class MainWindow(QMainWindow):
         return dock
 
     def _reset_can_layout(self):
-        for dock in (self._transmit_dock, self._bus_health_dock, self._signal_graph_dock):
+        for dock in (self._transmit_dock, self._bus_health_dock, self._signal_graph_dock,
+                     self._signal_tester_dock):
             if not dock.isHidden():
                 dock.close()
         self.restoreState(self._default_can_layout)
@@ -819,6 +829,7 @@ class MainWindow(QMainWindow):
     def _on_connected(self, label: str) -> None:
         self._model.start_session(self._service.session_started_at)
         self._signal_graph.set_channels(self._service.channels)
+        self._signal_tester.set_channels(self._service.channels)
         self._driver_tx_reports.setChecked(self._service.driver_tx_reports)
         self._listen_only.setChecked(self._service.listen_only)
         self._display_drop_base = 0
@@ -885,6 +896,7 @@ class MainWindow(QMainWindow):
         self._channel.setEnabled(True)
         self._apply_backend(self._current_backend())
         self._status.setText("Disconnected")
+        self._signal_tester.set_channels(())
         if self._close_after_disconnect: QTimer.singleShot(0, self.close)
         elif self._auto_discover or self._can_scan_pending: self._can_hotplug.start()
 
@@ -898,6 +910,8 @@ class MainWindow(QMainWindow):
             return
         if not self._signal_graph_dock.isHidden():
             self._signal_graph.append_frames(messages)
+        if self._signal_tester.recording or not self._signal_tester_dock.isHidden():
+            self._signal_tester.append_frames(messages)
         self._model.append_messages(messages, owned=owned)
         self._frame_count += len(messages)
         received = sum(msg.is_rx for msg in messages)
@@ -909,6 +923,7 @@ class MainWindow(QMainWindow):
 
 
     def _set_exploring(self, enabled):
+        self._signal_tester.set_exploring(enabled)
         self._exploring = enabled
         paused = self._service.is_connected and not enabled
         self._signal_graph.set_paused(paused)
@@ -918,8 +933,12 @@ class MainWindow(QMainWindow):
 
     def _toggle_exploring(self):
         if self._service.is_connected:
-            self._service.advance_display_epoch()
-            self._set_exploring(not self._exploring)
+            if self._exploring:
+                self._set_exploring(False)
+                self._service.advance_display_epoch()
+            else:
+                self._service.advance_display_epoch()
+                self._set_exploring(True)
 
     def _toggle_trace_mode(self, checked):
         self._model.set_history_mode(checked)
@@ -983,6 +1002,7 @@ class MainWindow(QMainWindow):
             return
         self._model.set_database(database)
         self._signal_graph.set_database(database)
+        self._signal_tester.set_database(database)
         self._recording_panel.database_path = path
         self._dbc_label.setText(f"{path.rsplit('/', 1)[-1]} ({len(database.messages)} messages)")
         self._dbc_label.setToolTip(path)
@@ -991,6 +1011,7 @@ class MainWindow(QMainWindow):
         self._recording_panel.database_path = None
         self._model.set_database(None)
         self._signal_graph.set_database(None)
+        self._signal_tester.set_database(None)
         self._dbc_label.setText("No DBC loaded")
         self._dbc_label.setToolTip("")
 
@@ -1016,6 +1037,7 @@ class MainWindow(QMainWindow):
         if active is not None and Path(active).resolve() == Path(path).resolve():
             self._model.set_database(database)
             self._signal_graph.set_database(database)
+            self._signal_tester.set_database(database)
             self._recording_panel.database_path = path
             self._dbc_label.setText(f"{Path(path).name} ({len(database.messages)} messages)")
             self._dbc_label.setToolTip(path)
@@ -1247,6 +1269,9 @@ class MainWindow(QMainWindow):
         lin_ready = self._lin.request_close()
         ethernet_ready = self._ethernet.request_close()
         if not can_ready or not lin_ready or not ethernet_ready:
+            event.ignore()
+            return
+        if not self._signal_tester.request_close():
             event.ignore()
             return
         if self._service.is_connected and self._service._interface != 'virtual':

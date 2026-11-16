@@ -76,8 +76,14 @@ display-label and BusChannel mapping in `SignalExplorer-session.json`. For Vecto
 CAN1-CAN4 map to recorded buses 1-4, including nonadjacent channel selections.
 Other backends use reported CAN labels when available, otherwise selection order. Older single-channel
 recordings remain readable. Choose **Recorded bus** to select the source and
-**TX channel** for the replay destination; replay is one recorded bus to one
-enabled TX destination, not automatic multi-bus rebroadcast.
+**TX channel** for the replay destination. File Viewer shows that destination.
+Each replay run uses one recorded bus and keeps the TX destination selected at
+the start of the run.
+
+Signal Graph and Signal Tester each monitor one selected CAN channel at a time.
+Both match the selected channel and frame format before looking up the CAN ID.
+The active DBC is shared across CAN channels. If the same ID has different
+layouts on different buses, load the DBC for the channel you are inspecting.
 
 Scripts may target and filter a specific enabled channel:
 
