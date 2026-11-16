@@ -1,0 +1,24 @@
+{
+  "format": "signal-explorer-signal-list",
+  "version": 1,
+  "channel": "1",
+  "direction": "rx",
+  "signals": [
+    {
+      "id": 272,
+      "extended": false,
+      "message": "DemoBoard_Potentiometer",
+      "signal": "Potentiometer",
+      "minimum": 1.0,
+      "maximum": 4.59
+    },
+    {
+      "id": 1024,
+      "extended": false,
+      "message": "DemoBoard_Waveforms",
+      "signal": "SineWave",
+      "minimum": -120.0,
+      "maximum": 120.0
+    }
+  ]
+}

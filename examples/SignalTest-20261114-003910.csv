@@ -1,0 +1,3 @@
+﻿Result,Signal,Unit,Minimum,Maximum,Samples,Out of range samples,Observed minimum,Observed maximum,First failing value,Channel,Direction,Started,Stopped,Stop reason,Dropped CAN display frames
+FAIL,DemoBoard_Potentiometer.Potentiometer,V,1.0,4.59,2354,299,2.9157509157509156,4.673992673992674,4.598290598290598,CAN1,Received (RX),2026-11-14T01:06:06-05:00,2026-11-14T01:06:29-05:00,Stopped by user,0
+FAIL,DemoBoard_Waveforms.SineWave,,-120.0,120.0,471,106,-127,127,121,CAN1,Received (RX),2026-11-14T01:06:06-05:00,2026-11-14T01:06:29-05:00,Stopped by user,0
